@@ -1,0 +1,22 @@
+import {PATH,TYPES,canPlace,onPath} from './game.js';
+export function loadArt(){const terrain=new Image(),sprites=new Image();terrain.src='/art/terrain.png';sprites.src='/art/sprites.png';return {terrain,sprites};}
+export function drawSprite(ctx,img,index,x,y,size){if(!img.complete||!img.naturalWidth)return;const w=img.naturalWidth/4;ctx.drawImage(img,index*w,0,w,img.naturalHeight,x-size/2,y-size*.8,size,size);}
+let pathTexture;
+function roadTexture(){const c=document.createElement('canvas');c.width=1000;c.height=650;const cx=c.getContext('2d');let seed=3187;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647;};for(let i=0;i<13500;i++){const x=rnd()*1000,y=rnd()*650;if(!onPath(x,y))continue;cx.fillStyle=['#8b734332','#f5e7b33b','#aa905137','#d0b78344'][i%4];cx.beginPath();cx.ellipse(x,y,.4+rnd()*1.6,.4+rnd()*.7,0,0,7);cx.fill();}return c;}
+export function render(ctx,g,art,hover,build,selected){
+ ctx.clearRect(0,0,1000,650);ctx.fillStyle='#83966a';ctx.fillRect(0,0,1000,650);if(art.terrain.complete&&art.terrain.naturalWidth)ctx.drawImage(art.terrain,0,0,1000,650);
+ const path=()=>{ctx.beginPath();PATH.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));};
+ ctx.lineJoin='round';ctx.lineCap='round';path();ctx.strokeStyle='#6f7752';ctx.lineWidth=65;ctx.stroke();path();ctx.strokeStyle='#b8a37a';ctx.lineWidth=59;ctx.stroke();path();ctx.strokeStyle='#d4be8c';ctx.lineWidth=51;ctx.stroke();path();ctx.strokeStyle='#dac695';ctx.lineWidth=35;ctx.stroke();pathTexture??=roadTexture();ctx.drawImage(pathTexture,0,0);
+ // Stable terrain detail, deterministic across frames.
+ for(let i=0;i<130;i++){const x=(i*137+57)%1000,y=(i*79+23)%650;if(!canPlace({towers:[]},x,y))continue;ctx.fillStyle=i%3?'#546d4738':'#d4d0a858';ctx.fillRect(x,y,2,3);}
+ ctx.strokeStyle='#f7f3cf13';ctx.lineWidth=1;for(let x=25;x<1000;x+=50){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,650);ctx.stroke();}for(let y=25;y<650;y+=50){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(1000,y);ctx.stroke();}
+ ctx.font='600 10px sans-serif';ctx.textAlign='left';ctx.fillStyle='#39482e';ctx.fillText('入侵入口  →',18,85);
+ const sel=g.towers.find(t=>t.id===selected);const range=(x,y,r,color)=>{ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=color+'20';ctx.fill();ctx.setLineDash([5,5]);ctx.strokeStyle=color+'a0';ctx.lineWidth=1.5;ctx.stroke();ctx.setLineDash([]);};
+ if(sel)range(sel.x,sel.y,TYPES[sel.type].range,'#eff5d2');
+ if(hover&&build&&!sel){const valid=canPlace(g,hover.x,hover.y)&&g.gold>=TYPES[build].cost;range(hover.x,hover.y,TYPES[build].range,valid?'#f4f4d9':'#d2674c');ctx.fillStyle=valid?'#f4f4d940':'#da745850';ctx.fillRect(hover.x-25,hover.y-25,50,50);ctx.globalAlpha=.65;drawSprite(ctx,art.sprites,['arrow','cannon','frost'].indexOf(build),hover.x,hover.y,78);ctx.globalAlpha=1;}
+ const objects=[...g.towers.map(t=>({...t,kind:'tower'})),...g.enemies.map(e=>({...e,kind:'enemy'}))].sort((a,b)=>a.y-b.y);
+ for(const o of objects){if(o.kind==='tower'){ctx.fillStyle='#183d2730';ctx.beginPath();ctx.ellipse(o.x,o.y+10,26,11,0,0,7);ctx.fill();drawSprite(ctx,art.sprites,['arrow','cannon','frost'].indexOf(o.type),o.x,o.y,82);if(o.damageLevel+o.speedLevel>0){ctx.fillStyle='#f3d480';for(let i=0;i<o.damageLevel+o.speedLevel;i++){ctx.beginPath();ctx.arc(o.x-12+i*5,o.y+17,2,0,7);ctx.fill();}}if(o.id===selected){ctx.strokeStyle='#fff2bb';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(o.x,o.y+10,30,14,0,0,7);ctx.stroke();}}
+ else{const size=o.boss?75:o.fast?38:46;ctx.save();if(o.slow>0)ctx.filter='hue-rotate(75deg)';if(o.hit>0)ctx.filter='brightness(1.65)';drawSprite(ctx,art.sprites,3,o.x,o.y+Math.sin(g.time*7+o.id)*2,size);ctx.restore();ctx.fillStyle='#243d2b88';ctx.fillRect(o.x-16,o.y-size*.7,32,4);ctx.fillStyle=o.boss?'#e5ae62':'#b2d584';ctx.fillRect(o.x-16,o.y-size*.7,32*Math.max(0,o.hp/o.maxHp),4);}}
+ for(const s of g.shots){const def=TYPES[s.type];ctx.strokeStyle=s.type==='frost'?'#b4f6ff':s.type==='cannon'?'#e9b064':'#fff3c0';ctx.lineWidth=s.type==='cannon'?5:2;ctx.globalAlpha=s.life/s.max;ctx.beginPath();ctx.moveTo(s.x,s.y);ctx.lineTo(s.tx,s.ty);ctx.stroke();ctx.beginPath();ctx.arc(s.tx,s.ty,s.type==='cannon'?28:6,0,7);ctx.stroke();ctx.globalAlpha=1;}
+ for(const p of g.particles){ctx.globalAlpha=p.life;ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.fillStyle='#fff2a6';ctx.strokeStyle='#385c37';ctx.lineWidth=3;ctx.strokeText(p.text,p.x,p.y-25);ctx.fillText(p.text,p.x,p.y-25);ctx.globalAlpha=1;}
+}
