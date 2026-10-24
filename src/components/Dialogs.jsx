@@ -20,7 +20,7 @@ import {
   TYPES,
   SPECIALIZATIONS,
 } from "../content.js";
-import { EnemyArt } from "./Art.jsx";
+import { EnemyArt, MapPreview } from "./Art.jsx";
 export default function Dialogs({ state, onChooseLevel }) {
   const { modal, setModal, g, reset, muted, toggleSound, records } = state,
     [difficulty, setDifficulty] = useState(g.difficulty),
@@ -100,7 +100,7 @@ export default function Dialogs({ state, onChooseLevel }) {
               切换会重置当前关卡的金币、布阵与波次。已经获得的星级和战绩会保留。
             </p>
             <div className="level-switch-preview">
-              <img src={getLevel(state.requestedLevel).image} alt="" />
+              <MapPreview level={state.requestedLevel} />
               <h3>{getLevel(state.requestedLevel).name}</h3>
               <p>{getLevel(state.requestedLevel).description}</p>
             </div>

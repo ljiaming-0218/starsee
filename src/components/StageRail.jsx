@@ -1,3 +1,4 @@
+import { MapPreview } from "./Art.jsx";
 import React from "react";
 import { Star, Map, ChevronRight } from "lucide-react";
 import { LEVELS, LEVEL_IDS, levelWaveCount } from "../levels.js";
@@ -29,7 +30,7 @@ export default function StageRail({ state, onChoose, compact = false }) {
               aria-pressed={g.level === id}
               style={{ "--stage-accent": l.color }}
             >
-              <img src={l.image} alt="" loading={compact ? "eager" : "lazy"} />
+              <MapPreview level={id} />
               <span>
                 <strong>
                   <b>{l.number}</b>

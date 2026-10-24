@@ -27,6 +27,8 @@ import {
   pathLength,
   positionAt,
   starRating,
+  buildingAt,
+  snapPlot,
   damageBuilding,
   repairCost,
   repairTower,
@@ -637,27 +639,31 @@ test("new specialization branches extend fire range, strengthen burn, hunt bosse
   }
 });
 
-test("monsters damage buildings, pause briefly to raid, then resume marching", () => {
+test("enemy attacks have short windups and do not idle during attack cooldown", () => {
   const { g, t } = scenario();
+  t.y = 175;
   t.cooldown = 100;
   const e = stationary(g);
   e.speed = 48;
   const before = e.distance;
   tick(g, 0.1);
-  assert(t.hp < t.maxHp);
+  assert.equal(t.hp, t.maxHp);
   assert.equal(e.distance, before);
-  assert.equal(e.raidTarget, t.id);
-  assert(g.effects.some((fx) => fx.type === "raid"));
-  advance(g, 2.6);
-  assert(e.marchTimer > 0);
+  assert(e.attackWindup > 0);
+  advance(g, 0.2);
+  assert(t.hp < t.maxHp);
+  assert(e.attackCooldown > 0);
   assert(e.distance > before);
+  const moved = e.distance;
+  advance(g, 0.5);
+  assert(e.distance > moved + 20);
 });
 test("ranged ghosts reach the rear line and boss blows damage neighboring buildings", () => {
   for (const type of ["slime", "wisp"]) {
     const { g, t } = scenario();
     t.cooldown = 100;
     stationary(g, type, 580);
-    tick(g, 0.1);
+    advance(g, 0.4);
     assert.equal(t.hp < t.maxHp, type === "wisp");
   }
   const { g, t } = scenario();
@@ -665,7 +671,7 @@ test("ranged ghosts reach the rear line and boss blows damage neighboring buildi
   const other = placeTower(g, "cannon", 475, 175);
   other.cooldown = 100;
   stationary(g, "boss");
-  tick(g, 0.1);
+  advance(g, 0.7);
   assert(t.hp < t.maxHp && other.hp < other.maxHp);
 });
 test("destroyed buildings stop shooting, receive no refund, and their site can be rebuilt", () => {
@@ -785,20 +791,21 @@ test("emergency repair charges only missing durability and terminal phases rejec
   g.phase = "lost";
   assert(!repairTower(g, t.id));
 });
-test("v4 saves preserve damage, clinics and raid clocks while v3 campaigns migrate safely", () => {
+test("v5 saves preserve damage, clinics and raid clocks while v3 campaigns migrate safely", () => {
   const { g, t } = scenario("medic");
   t.hp = 67;
   t.healingDone = 39;
   const e = stationary(g, "wisp");
   e.attackCooldown = 2;
-  e.marchTimer = 4;
+  e.attackWindup = 0.1;
+  e.raidTarget = t.id;
   const data = new Map(),
     store = { getItem: (k) => data.get(k), setItem: (k, v) => data.set(k, v) };
   persistGame(store, g);
   const restored = restoreGame(store);
   assert.equal(restored.towers[0].hp, 67);
   assert.equal(restored.towers[0].healingDone, 39);
-  assert.equal(restored.enemies[0].marchTimer, 4);
+  assert.equal(restored.enemies[0].attackWindup, 0.1);
   assert.equal(restored.enemies[0].attackCooldown, 2);
   const legacy = JSON.parse(JSON.stringify(g));
   legacy.version = 3;
@@ -809,12 +816,12 @@ test("v4 saves preserve damage, clinics and raid clocks while v3 campaigns migra
   data.delete(SAVE_KEY);
   store.setItem("evergreen.campaign.v3", JSON.stringify(legacy));
   const migrated = restoreGame(store);
-  assert.equal(migrated.version, 4);
+  assert.equal(migrated.version, 5);
   assert.equal(migrated.towers[0].hp, TYPES.medic.hp);
   assert.equal(migrated.gold, g.gold);
 });
 
-test("clinics do not revive ruins or heal out-of-range buildings and stop between waves", () => {
+test("clinics do not revive ruins or heal out-of-range buildings and continue healing during intermission", () => {
   const { g, t } = scenario();
   const clinic = placeTower(g, "medic", 475, 175),
     far = placeTower(g, "frost", 325, 375);
@@ -827,10 +834,12 @@ test("clinics do not revive ruins or heal out-of-range buildings and stop betwee
   clinic.hp = 100;
   g.phase = "ready";
   advance(g, 3);
-  assert.equal(clinic.hp, 100);
-  g.phase = "battle";
-  tick(g, 0.01);
-  assert.equal(clinic.hp, 124);
+  assert(clinic.hp > 100);
+  assert.equal(far.hp, 100);
+  const healed = clinic.hp;
+  g.phase = "lost";
+  advance(g, 3);
+  assert.equal(clinic.hp, healed);
 });
 test("invalid durability in current saves is rejected instead of creating immortal buildings", () => {
   const { g, t } = scenario();
@@ -841,4 +850,94 @@ test("invalid durability in current saves is rejected instead of creating immort
     persistGame(store, g);
     assert.equal(restoreGame(store), null);
   }
+});
+
+test("roof and body clicks select the visible building before snapping to a plot", () => {
+  const { g, t } = scenario();
+  assert.equal(buildingAt(g, { x: 425, y: 170 })?.id, t.id);
+  assert.equal(buildingAt(g, { x: 449, y: 190 })?.id, t.id);
+  assert.equal(buildingAt(g, { x: 425, y: 230 })?.id, t.id);
+  assert.equal(buildingAt(g, { x: 470, y: 225 }), null);
+  assert.deepEqual(snapPlot({ x: 439, y: 234 }), { x: 425, y: 225 });
+  const rear = placeTower(g, "medic", 375, 175);
+  assert(rear);
+  assert.equal(buildingAt(g, { x: 400, y: 180 })?.id, t.id);
+});
+test("in-flight projectiles survive a reload and resolve the same damage", () => {
+  const { g, t } = scenario("cannon");
+  stationary(g);
+  tick(g, 0.1);
+  assert(g.shots.length > 0);
+  const data = new Map(),
+    store = { getItem: (k) => data.get(k), setItem: (k, v) => data.set(k, v) };
+  persistGame(store, g);
+  const restored = restoreGame(store);
+  assert.equal(restored.shots.length, g.shots.length);
+  advance(g, 0.6);
+  advance(restored, 0.6);
+  assert.equal(restored.enemies[0].hp, g.enemies[0].hp);
+  assert.equal(restored.damageDealt, g.damageDealt);
+  assert.equal(restored.towers[0].cooldown, t.cooldown);
+});
+test("every wave eventually clears with only non-attacking support buildings", () => {
+  for (const level of LEVEL_IDS) {
+    const g = initialGame("normal", level);
+    g.maxLives = g.lives = 10000;
+    for (const type of ["medic", "bulwark"]) {
+      let built = false;
+      for (let y = 75; y <= 575 && !built; y += 50)
+        for (let x = 75; x <= 925 && !built; x += 50)
+          if (canPlace(g, x, y)) built = !!placeTower(g, type, x, y);
+      assert(built);
+    }
+    for (let w = 1; w <= levelWaveCount(level); w++) {
+      assert(startWave(g));
+      for (let i = 0; i < 3000 && g.phase === "battle"; i++) tick(g, 0.05);
+      assert.notEqual(
+        g.phase,
+        "battle",
+        `${level} wave ${w} failed to finish within 150s`,
+      );
+      assert.equal(g.enemies.length, 0);
+      assert.equal(g.spawned, waveCount(w, level));
+    }
+    assert.equal(g.phase, "won");
+  }
+});
+test("killing the final enemy resolves both ordinary and victory wave transitions", () => {
+  for (const wave of [1, 8]) {
+    const g = initialGame();
+    g.phase = "battle";
+    g.wave = wave;
+    g.spawned = waveCount(wave, g.level);
+    const e = makeEnemy(g, "slime", 1000);
+    e.hp = 1;
+    e.poison = 2;
+    e.poisonDps = 100;
+    g.enemies.push(e);
+    tick(g, 0.05);
+    assert.equal(g.phase, wave === 8 ? "won" : "ready");
+    assert.equal(g.enemies.length, 0);
+    assert.equal(g.kills, 1);
+  }
+});
+
+test("v4 battles migrate without the old forced raid and march timers", () => {
+  const { g, t } = scenario();
+  const e = stationary(g);
+  e.speed = 48;
+  e.attackCooldown = 1;
+  e.raidTime = 2;
+  e.marchTimer = 5;
+  g.version = 4;
+  const data = new Map([["evergreen.campaign.v4", JSON.stringify(g)]]),
+    store = { getItem: (k) => data.get(k), setItem: (k, v) => data.set(k, v) };
+  const restored = restoreGame(store);
+  assert.equal(restored.version, 5);
+  assert.equal(restored.towers[0].hp, t.hp);
+  assert.equal(restored.enemies[0].raidTime, undefined);
+  assert.equal(restored.enemies[0].marchTimer, undefined);
+  const distance = restored.enemies[0].distance;
+  tick(restored, 0.1);
+  assert(restored.enemies[0].distance > distance);
 });

@@ -4,11 +4,19 @@ import React, { useEffect, useRef } from "react";
 import { Trees, RotateCcw } from "lucide-react";
 import { TYPES, levelWave } from "./content.js";
 import { useGame } from "./useGame.js";
-import { startWave, placeTower, canPlace, castSpell } from "./game.js";
+import {
+  startWave,
+  placeTower,
+  canPlace,
+  castSpell,
+  buildingAt,
+  snapPlot,
+} from "./game.js";
 import Workshop from "./components/Workshop.jsx";
 import BattleControls from "./components/BattleControls.jsx";
 import Dialogs from "./components/Dialogs.jsx";
 import GameHeader from "./components/GameHeader.jsx";
+import { GameArtContext } from "./components/Art.jsx";
 import Battlefield from "./components/Battlefield.jsx";
 export default function App() {
   const state = useGame(),
@@ -55,7 +63,10 @@ export default function App() {
     sound("click");
     if (window.innerWidth <= 760)
       requestAnimationFrame(() =>
-        canvas.current?.scrollIntoView({ block: "center", behavior: "smooth" }),
+        canvas.current?.scrollIntoView({
+          block: "center",
+          behavior: "instant",
+        }),
       );
   }
   function launch() {
@@ -95,14 +106,28 @@ export default function App() {
       }
       return;
     }
-    const existing = current.towers.find(
-      (t) => Math.hypot(t.x - point.x, t.y - point.y) < 35,
-    );
+    const existing = buildingAt(current, point);
     if (existing) {
       setSelected(existing.id);
       setBuild(null);
       setSpell(null);
       setNotice("查看建筑耐久、维修、升级和支援范围。");
+      requestAnimationFrame(() => {
+        const inspector = document.querySelector(".inspector"),
+          panel = document.querySelector(".workshop");
+        if (!inspector || !panel) return;
+        if (window.innerWidth <= 760)
+          inspector.scrollIntoView({ block: "start", behavior: "instant" });
+        else
+          panel.scrollTo({
+            top:
+              panel.scrollTop +
+              inspector.getBoundingClientRect().top -
+              panel.getBoundingClientRect().top -
+              12,
+            behavior: "instant",
+          });
+      });
       return;
     }
     if (!v.build) {
@@ -113,11 +138,12 @@ export default function App() {
       setNotice("金币不足。击败敌人和守住波次可获得金币。");
       return;
     }
-    if (!canPlace(current, point.x, point.y)) {
+    const plot = snapPlot(point);
+    if (!canPlace(current, plot.x, plot.y)) {
       setNotice("请在空地标记处建造，避开道路、森林、地标及其他防御塔。");
       return;
     }
-    const tower = placeTower(current, v.build, point.x, point.y);
+    const tower = placeTower(current, v.build, plot.x, plot.y);
     if (tower) {
       sound("click");
       setNotice(`${TYPES[v.build].name}已就位。点击塔可升级或改变目标。`);
@@ -178,53 +204,55 @@ export default function App() {
         .catch(() => setNotice("当前浏览器不支持全屏，可继续在窗口中游玩。"));
   }
   return (
-    <div className="game-shell" ref={root}>
-      <GameHeader
-        state={state}
-        fullscreen={fullscreen}
-        onFullscreen={toggleFullscreen}
-        onChooseLevel={chooseLevel}
-      />
-      <main className="game-grid">
-        <section className="battle-section">
-          <Battlefield
+    <GameArtContext.Provider value={state.art.current}>
+      <div className="game-shell" ref={root}>
+        <GameHeader
+          state={state}
+          fullscreen={fullscreen}
+          onFullscreen={toggleFullscreen}
+          onChooseLevel={chooseLevel}
+        />
+        <main className="game-grid">
+          <section className="battle-section">
+            <Battlefield
+              state={state}
+              onPoint={point}
+              onPlace={place}
+              onNext={nextLevel}
+            />
+            <BattleControls
+              state={state}
+              onLaunch={launch}
+              onSpell={useSpell}
+              onCodex={() => setModal("codex")}
+            />
+          </section>
+          <Workshop
             state={state}
-            onPoint={point}
-            onPlace={place}
-            onNext={nextLevel}
-          />
-          <BattleControls
-            state={state}
-            onLaunch={launch}
-            onSpell={useSpell}
+            onChoose={choose}
             onCodex={() => setModal("codex")}
           />
-        </section>
-        <Workshop
-          state={state}
-          onChoose={choose}
-          onCodex={() => setModal("codex")}
-        />
-      </main>
-      <StageRail state={state} onChoose={chooseLevel} />
-      <footer className="game-footer">
-        <span>
-          <Trees size={13} />
-          守住每一段旅程。
-        </span>
-        <span>
-          {saveStatus}
-          <i />
-          最高得分 {records.bestScore.toLocaleString()}
-          <i />
-          EVERGREEN · LANTERN DEFENSE
-        </span>
-        <button onClick={() => setModal("restart")}>
-          <RotateCcw size={11} />
-          新战役
-        </button>
-      </footer>
-      <Dialogs state={state} onChooseLevel={chooseLevel} />
-    </div>
+        </main>
+        <StageRail state={state} onChoose={chooseLevel} />
+        <footer className="game-footer">
+          <span>
+            <Trees size={13} />
+            守住每一段旅程。
+          </span>
+          <span>
+            {saveStatus}
+            <i />
+            最高得分 {records.bestScore.toLocaleString()}
+            <i />
+            EVERGREEN · LANTERN DEFENSE
+          </span>
+          <button onClick={() => setModal("restart")}>
+            <RotateCcw size={11} />
+            新战役
+          </button>
+        </footer>
+        <Dialogs state={state} onChooseLevel={chooseLevel} />
+      </div>
+    </GameArtContext.Provider>
   );
 }

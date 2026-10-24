@@ -54,7 +54,7 @@ export function initialGame(difficulty = "normal", level = "forest") {
   if (!DIFFICULTIES[difficulty]) difficulty = "normal";
   const maxLives = DIFFICULTIES[difficulty].lives;
   return {
-    version: 4,
+    version: 5,
     level: getLevel(level).id,
     difficulty,
     maxLives,
@@ -109,6 +109,27 @@ export function canPlace(g, x, y) {
     !l.obstacles.some((o) => Math.hypot(x - o.x, y - o.y) <= o.r) &&
     !g.towers.some((t) => Math.hypot(t.x - x, t.y - y) < 61)
   );
+}
+export const BUILDING_SPRITE_SIZE = 80;
+export function buildingAt(g, point) {
+  return (
+    [...g.towers]
+      .sort((a, b) => b.y - a.y)
+      .find(
+        (t) =>
+          t.hp > 0 &&
+          point.x >= t.x - 36 &&
+          point.x <= t.x + 36 &&
+          point.y >= t.y - 66 &&
+          point.y <= t.y + 15,
+      ) || null
+  );
+}
+export function snapPlot(point) {
+  return {
+    x: Math.round((point.x - 25) / 50) * 50 + 25,
+    y: Math.round((point.y - 25) / 50) * 50 + 25,
+  };
 }
 export function placeTower(g, type, x, y) {
   if (
@@ -385,32 +406,13 @@ function clearDestroyed(g) {
 function raid(g, e, dt) {
   const def = ENEMIES[e.type];
   e.attackCooldown = Math.max(0, e.attackCooldown - dt);
-  e.marchTimer = Math.max(0, e.marchTimer - dt);
-  if (e.marchTimer > 0) {
+  if (e.attackWindup > 0) {
+    e.attackWindup = Math.max(0, e.attackWindup - dt);
+    if (e.attackWindup > 0) return true;
+    const target = g.towers.find((t) => t.id === e.raidTarget && t.hp > 0);
     e.raidTarget = null;
-    return false;
-  }
-  const targets = g.towers.filter(
-    (t) => t.hp > 0 && Math.hypot(t.x - e.x, t.y - e.y) <= def.reach,
-  );
-  targets.sort((a, b) => {
-    if (
-      e.type === "armored" &&
-      (a.type === "bulwark") !== (b.type === "bulwark")
-    )
-      return a.type === "bulwark" ? -1 : 1;
-    return Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y);
-  });
-  const target = targets[0];
-  if (!target) {
-    e.raidTime = 0;
-    e.raidTarget = null;
-    return false;
-  }
-  e.raidTarget = target.id;
-  e.raidTime += dt;
-  if (e.attackCooldown <= 0) {
-    e.attackCooldown = def.attackInterval;
+    if (!target || Math.hypot(target.x - e.x, target.y - e.y) > def.reach + 8)
+      return false;
     const damage =
       def.attack *
       (1 + (g.wave - 1) * 0.045) *
@@ -426,22 +428,65 @@ function raid(g, e, dt) {
       x: e.x,
       y: e.y - 15,
       tx: target.x,
-      ty: target.y - 30,
-      life: 0.45,
-      max: 0.45,
+      ty: target.y - 22,
+      life: 0.32,
+      max: 0.32,
       heavy: e.boss,
     });
     if (target.hp < target.maxHp * 0.35) {
       g.raidAlert = `${TYPES[target.type].name}耐久告急，诊所或紧急维修可以救援`;
       g.raidAlertTime = 3;
     }
+    return false;
   }
-  if (e.raidTime >= 2.4) {
-    e.raidTime = 0;
-    e.marchTimer = 5.5;
-    e.raidTarget = null;
-  }
+  if (e.attackCooldown > 0) return false;
+  const targets = g.towers.filter(
+    (t) => t.hp > 0 && Math.hypot(t.x - e.x, t.y - e.y) <= def.reach,
+  );
+  targets.sort((a, b) => {
+    if (
+      e.type === "armored" &&
+      (a.type === "bulwark") !== (b.type === "bulwark")
+    )
+      return a.type === "bulwark" ? -1 : 1;
+    return Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y);
+  });
+  if (!targets.length) return false;
+  e.raidTarget = targets[0].id;
+  e.attackCooldown = def.attackInterval;
+  e.attackWindup = e.boss ? 0.55 : e.type === "armored" ? 0.35 : 0.18;
   return true;
+}
+export function clinicPatients(g, t) {
+  const stats = towerStats(t);
+  return g.towers
+    .filter(
+      (b) =>
+        b.hp > 0 &&
+        b.hp < b.maxHp &&
+        Math.hypot(b.x - t.x, b.y - t.y) <= stats.range,
+    )
+    .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+}
+function tickSupport(g, t, dt) {
+  t.cooldown = Math.max(0, t.cooldown - dt);
+  t.recoil = Math.max(0, t.recoil - dt);
+  if (t.cooldown > 0) return;
+  const stats = towerStats(t);
+  if (t.type === "medic") {
+    const targets = clinicPatients(g, t).slice(
+      0,
+      t.specialization === "triage" ? 2 : 1,
+    );
+    if (targets.length) {
+      for (const b of targets) healBuilding(g, t, b, stats.healing);
+      t.cooldown = stats.interval;
+      t.recoil = 0.2;
+    }
+  } else if (t.type === "bulwark" && t.hp < t.maxHp) {
+    healBuilding(g, t, t, stats.selfHeal);
+    t.cooldown = stats.interval;
+  }
 }
 export function makeEnemy(g, type, distance = 0) {
   const def = ENEMIES[type],
@@ -474,8 +519,7 @@ export function makeEnemy(g, type, distance = 0) {
     poisonOwner: null,
     escaped: false,
     attackCooldown: 0,
-    raidTime: 0,
-    marchTimer: 0,
+    attackWindup: 0,
     raidTarget: null,
   };
 }
@@ -764,6 +808,13 @@ export function tick(g, dt) {
   g.particles = g.particles.filter((p) => p.life > 0);
   g.bannerTime = Math.max(0, g.bannerTime - dt);
   g.raidAlertTime = Math.max(0, g.raidAlertTime - dt);
+  if (g.phase === "ready") {
+    for (const t of g.towers) {
+      t.hit = Math.max(0, t.hit - dt);
+      if (t.type === "medic" || t.type === "bulwark") tickSupport(g, t, dt);
+    }
+    return;
+  }
   if (g.phase !== "battle") return;
   for (const t of g.towers) t.hit = Math.max(0, t.hit - dt);
   g.time += dt;
@@ -836,32 +887,10 @@ export function tick(g, dt) {
     if (t.type === "beacon") continue;
     t.cooldown -= dt;
     t.recoil = Math.max(0, t.recoil - dt);
-    if (t.type === "medic") {
-      if (t.cooldown <= 0) {
-        const stats = towerStats(t),
-          targets = g.towers
-            .filter(
-              (b) =>
-                b.hp > 0 &&
-                b.hp < b.maxHp &&
-                Math.hypot(b.x - t.x, b.y - t.y) <= stats.range,
-            )
-            .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)
-            .slice(0, t.specialization === "triage" ? 2 : 1);
-        if (targets.length) {
-          for (const b of targets) healBuilding(g, t, b, stats.healing);
-          t.cooldown = stats.interval;
-          t.recoil = 0.2;
-        }
-      }
-      continue;
-    }
-    if (t.type === "bulwark") {
-      if (t.cooldown <= 0 && t.hp < t.maxHp) {
-        const stats = towerStats(t);
-        healBuilding(g, t, t, stats.selfHeal);
-        t.cooldown = stats.interval;
-      }
+    if (t.type === "medic" || t.type === "bulwark") {
+      // Support owns its timer, in battle and during intermission.
+      t.cooldown += dt;
+      tickSupport(g, t, dt);
       continue;
     }
     const target = selectTarget(t, g.enemies);

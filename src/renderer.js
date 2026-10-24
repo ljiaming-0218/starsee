@@ -1,45 +1,40 @@
 import { LEVELS, getLevel } from "./levels.js";
 import { TYPES, ENEMIES } from "./content.js";
-import { canPlace, towerStats } from "./game.js";
+import { canPlace, towerStats, BUILDING_SPRITE_SIZE } from "./game.js";
+import { pixelAtlas, createTerrain } from "./pixelArt.js";
 export function loadArt(level = "forest") {
   const art = { terrains: {}, mapPromises: {} };
-  function load(name, src) {
+  function load(name, src, cols, rows, cellSize = 32) {
     return new Promise((resolve, reject) => {
       const image = new Image();
-      art[name] = image;
-      image.onload = () => resolve(image);
+      image.onload = () => {
+        art[name] = pixelAtlas(image, cols, rows, cellSize);
+        resolve();
+      };
       image.onerror = () => reject(new Error("素材加载失败：" + name));
       image.src = src;
     });
   }
-  art.loadLevel = (id) => {
-    if (art.mapPromises[id]) return art.mapPromises[id];
-    art.mapPromises[id] = new Promise((resolve, reject) => {
-      const image = new Image();
-      art.terrains[id] = image;
-      image.onload = () => resolve(image);
-      image.onerror = () => {
-        delete art.mapPromises[id];
-        reject(new Error("地图加载失败：" + getLevel(id).name));
-      };
-      image.src = getLevel(id).image;
-    });
-    return art.mapPromises[id];
-  };
-  art.ready = Promise.all([
-    load("towers", "/art/cozy-towers.png"),
-    load("enemies", "/art/dread-enemies.png"),
-    art.loadLevel(level),
-  ]).then((images) => {
+  const common = Promise.all([
+    load("towers", "/art/tiny-buildings.png", 5, 2),
+    load("enemies", "/art/tiny-monsters.png", 3, 2, 20),
+    load("spells", "/art/pixel-spells.png", 2, 1, 16),
+    load("tiles", "/art/terrain-tiles.png", 4, 3),
+  ]);
+  art.loadLevel = (id) =>
+    (art.mapPromises[id] ||= common.then(() => {
+      art.terrains[id] = createTerrain(id, art.tiles);
+      return art.terrains[id];
+    }));
+  art.ready = art.loadLevel(level).then(() => {
     art.loaded = true;
-    return images;
   });
   return art;
 }
 function paintCell(ctx, img, index, cols, rows, x, y, size) {
-  if (!img?.naturalWidth) return;
-  const w = img.naturalWidth / cols,
-    h = img.naturalHeight / rows;
+  if (!img?.width) return;
+  const w = img.width / cols,
+    h = img.height / rows;
   ctx.drawImage(
     img,
     (index % cols) * w,
@@ -52,7 +47,7 @@ function paintCell(ctx, img, index, cols, rows, x, y, size) {
     size,
   );
 }
-function towerSprite(ctx, art, t, height = 90) {
+function towerSprite(ctx, art, t, height = BUILDING_SPRITE_SIZE) {
   paintCell(
     ctx,
     art.towers,
@@ -77,7 +72,7 @@ function enemySprite(ctx, art, e) {
     2,
     e.x,
     e.y + bob,
-    def.size + 10,
+    e.boss ? 100 : 50,
   );
 }
 function circle(ctx, x, y, r, fill, stroke = null) {
@@ -277,7 +272,7 @@ export function render(
   reducedMotion = false,
 ) {
   const terrain = art.terrains[g.level];
-  if (!terrain?.naturalWidth) return;
+  if (!terrain?.width) return;
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, 1000, 650);
   ctx.drawImage(terrain, 0, 0, 1000, 650);
@@ -293,10 +288,31 @@ export function render(
   const sel = g.towers.find((t) => t.id === selected);
   const range = (x, y, r, valid = true) => {
     ctx.save();
-    circle(ctx, x, y, r, valid ? "#bed8bf32" : "#f3867344");
+    circle(
+      ctx,
+      x,
+      y,
+      r,
+      valid
+        ? sel?.type === "medic" || build === "medic"
+          ? "#9bffd023"
+          : "#bed8bf32"
+        : "#f3867344",
+    );
     ctx.setLineDash([5, 5]);
     ctx.lineWidth = 1.8;
-    circle(ctx, x, y, r, null, valid ? "#f1e5b9dd" : "#ed9a86dd");
+    circle(
+      ctx,
+      x,
+      y,
+      r,
+      null,
+      valid
+        ? sel?.type === "medic" || build === "medic"
+          ? "#9bffd0"
+          : "#f1e5b9dd"
+        : "#ed9a86dd",
+    );
     ctx.restore();
   };
   if (sel) range(sel.x, sel.y, towerStats(sel, g).range);
@@ -323,14 +339,13 @@ export function render(
           ctx.save();
           ctx.globalAlpha = hover?.x === x && hover?.y === y ? 0.9 : 0.4;
           ctx.lineWidth = 1.2;
-          circle(ctx, x, y, 12, "#16382088", "#e4d6a1");
-          ctx.strokeStyle = "#e8dfad";
-          ctx.beginPath();
-          ctx.moveTo(x - 4, y);
-          ctx.lineTo(x + 4, y);
-          ctx.moveTo(x, y - 4);
-          ctx.lineTo(x, y + 4);
-          ctx.stroke();
+          ctx.fillStyle = "#e5eeeb";
+          for (const dx of [-12.5, 5])
+            for (const dy of [-12.5, 10])
+              ctx.fillRect(x + dx, y + dy, 7.5, 2.5);
+          for (const dx of [-12.5, 10])
+            for (const dy of [-12.5, 5]) ctx.fillRect(x + dx, y + dy, 2.5, 7.5);
+          ctx.fillRect(x - 2.5, y - 2.5, 5, 5);
           ctx.restore();
         }
     if (hover && !sel) {
@@ -339,7 +354,7 @@ export function render(
       range(hover.x, hover.y, TYPES[build].range, valid);
       ctx.save();
       ctx.globalAlpha = 0.6;
-      towerSprite(ctx, art, { type: build, ...hover }, 95);
+      towerSprite(ctx, art, { type: build, ...hover });
       ctx.restore();
     }
   }
@@ -370,7 +385,7 @@ export function render(
     if (o.kind === "tower") {
       ctx.fillStyle = "#07140b55";
       ctx.beginPath();
-      ctx.ellipse(o.x, o.y + 9, 25, 10, 0, 0, 7);
+      ctx.ellipse(o.x, o.y + 6, 21, 7, 0, 0, 7);
       ctx.fill();
       if (o.type === "beacon") {
         ctx.setLineDash([4, 5]);
@@ -385,10 +400,11 @@ export function render(
         ctx,
         art,
         o,
-        105 + (o.recoil > 0 ? -Math.sin(o.recoil * 15) * 3 : 0),
+        BUILDING_SPRITE_SIZE +
+          (o.recoil > 0 ? -Math.sin(o.recoil * 15) * 2 : 0),
       );
       ctx.filter = "none";
-      const healthY = o.y - 98;
+      const healthY = o.y - 70;
       ctx.fillStyle = "#071b29";
       ctx.fillRect(o.x - 25, healthY - 1, 50, 7);
       ctx.fillStyle = o.hp < o.maxHp * 0.35 ? "#ff7e91" : "#9bffd0";
@@ -404,7 +420,7 @@ export function render(
         ctx.strokeStyle = "#eed594";
         ctx.lineWidth = 1.7;
         ctx.beginPath();
-        ctx.ellipse(o.x, o.y + 8, 29, 13, 0, 0, 7);
+        ctx.ellipse(o.x, o.y + 6, 24, 9, 0, 0, 7);
         ctx.stroke();
       }
       const level = o.damageLevel + o.speedLevel;
@@ -414,7 +430,7 @@ export function render(
         ctx.font = "bold 10px sans-serif";
         ctx.fillStyle = "#f8e3a8";
         ctx.textAlign = "center";
-        ctx.fillText("◆", o.x, o.y - 85);
+        ctx.fillText("◆", o.x, o.y - 82);
       }
     } else {
       if (o.hit > 0) {

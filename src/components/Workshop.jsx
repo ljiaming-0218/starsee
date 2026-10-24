@@ -27,6 +27,7 @@ import {
   sell,
   repairCost,
   repairTower,
+  clinicPatients,
 } from "../game.js";
 import { TowerArt, EnemyArt } from "./Art.jsx";
 const priorities = [
@@ -54,6 +55,7 @@ export default function Workshop({ state, onChoose, onCodex }) {
       g,
     ),
     ended = ["won", "lost"].includes(g.phase);
+  const patients = tower?.type === "medic" ? clinicPatients(g, tower) : [];
   const level = tower ? tower.damageLevel + tower.speedLevel : 0;
   const specialization =
     tower && SPECIALIZATIONS[type].find((s) => s.id === tower.specialization);
@@ -105,6 +107,21 @@ export default function Workshop({ state, onChoose, onCodex }) {
         ))}
       </div>
       <section className="inspector">
+        {tower && (
+          <button
+            className="inspector-back"
+            onClick={() => {
+              setSelected(null);
+              setBuild(null);
+              const panel = document.querySelector(".workshop");
+              panel?.scrollTo({ top: 0, behavior: "instant" });
+              if (window.innerWidth <= 760)
+                panel?.scrollIntoView({ block: "start", behavior: "instant" });
+            }}
+          >
+            返回建造列表 <ChevronRight size={13} />
+          </button>
+        )}
         <div className="inspector-title">
           <TowerArt type={type} />
           <div>
@@ -158,6 +175,28 @@ export default function Workshop({ state, onChoose, onCodex }) {
             <small>会受到怪物攻击 · 诊所可以修复</small>
           )}
         </div>
+        {type === "medic" && tower && (
+          <div
+            className={`clinic-status ${patients.length ? "is-healing" : ""}`}
+            role="status"
+          >
+            <HeartPulse size={16} />
+            <span>
+              {ended
+                ? "战斗已结束"
+                : state.paused
+                  ? "已暂停，继续后治疗"
+                  : patients.length
+                    ? `正在治疗 · 范围内 ${patients.length} 座受伤建筑`
+                    : "范围内建筑完好，等待伤员"}
+              <small>
+                {patients.length
+                  ? `优先：${TYPES[patients[0].type].name} · 下次治疗 ${Math.max(0, tower.cooldown).toFixed(1)}s`
+                  : "绿圈内有效 · 休整时也会治疗 · 不修复已摧毁建筑"}
+              </small>
+            </span>
+          </div>
+        )}
         {["medic", "bulwark"].includes(type) && (
           <div className="mechanic-note">
             {type === "medic"

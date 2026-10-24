@@ -92,7 +92,7 @@ export function useGame() {
         !v.paused &&
         !v.modal &&
         art.current.loaded &&
-        art.current.terrains[game.current.level]?.naturalWidth
+        art.current.terrains[game.current.level]?.width
       )
         tick(game.current, dt * v.speed);
       const shots = game.current.towers.reduce((n, t) => n + t.shots, 0);
@@ -145,8 +145,8 @@ export function useGame() {
       frame = requestAnimationFrame(animate);
     };
     frame = requestAnimationFrame(animate);
-    canvas.current.width = 500;
-    canvas.current.height = 325;
+    canvas.current.width = 400;
+    canvas.current.height = 260;
     const save = () => persistGame(localStorageSafe(), game.current);
     window.addEventListener("pagehide", save);
     return () => {
@@ -168,6 +168,7 @@ export function useGame() {
         if (game.current.level === level) setAssets("ready");
       })
       .catch((e) => {
+        if (game.current.level !== level) return;
         setAssets("error");
         setAssetError(e.message);
       });
@@ -191,6 +192,7 @@ export function useGame() {
   }
   return {
     game,
+    art,
     canvas,
     hover,
     view,

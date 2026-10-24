@@ -12,7 +12,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { DIFFICULTIES, levelWave } from "../content.js";
-import { starRating } from "../game.js";
+import { starRating, waveCount } from "../game.js";
 const ENEMY_BOSS_NAME = "裂颚灾像";
 export default function Battlefield({ state, onPoint, onPlace, onNext }) {
   const {
@@ -38,8 +38,8 @@ export default function Battlefield({ state, onPoint, onPlace, onNext }) {
     <div className={`battlefield ${build || spell ? "is-targeting" : ""}`}>
       <canvas
         ref={canvas}
-        width={500}
-        height={325}
+        width={400}
+        height={260}
         tabIndex={0}
         aria-label="像素战场。选择塔后点击空地标记建造。方向键移动，Enter 确认。"
         onPointerMove={(e) => {
@@ -48,7 +48,7 @@ export default function Battlefield({ state, onPoint, onPlace, onNext }) {
         onPointerLeave={() => {
           hover.current = null;
         }}
-        onClick={(e) => onPlace(onPoint(e, view.current.spell !== "meteor"))}
+        onClick={(e) => onPlace(onPoint(e, false))}
         onKeyDown={(e) => {
           const p = hover.current || { x: 425, y: 225 };
           const dirs = {
@@ -78,7 +78,11 @@ export default function Battlefield({ state, onPoint, onPlace, onNext }) {
         </span>
         <span>
           <i />
-          {g.phase === "battle" ? "防线交战中" : `${stage.name} · 防线待命`}
+          {g.phase === "battle"
+            ? g.spawned < waveCount(g.wave, g.level)
+              ? `出现 ${g.spawned}/${waveCount(g.wave, g.level)} · 场上 ${g.enemies.length}`
+              : `清理剩余 ${g.enemies.length} 只敌人`
+            : `${stage.name} · 防线待命`}
         </span>
       </div>
       {assets !== "ready" && (

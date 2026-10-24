@@ -213,12 +213,12 @@ export const ENEMIES = {
 };
 // Reach is measured from the road position to the building footprint.
 const raids = {
-  slime: [145, 9, 1.6, "近距离噬咬建筑"],
-  scout: [150, 8, 1.1, "快速挥爪，威胁前排"],
-  armored: [170, 24, 2.2, "重击建筑，优先攻击龟壳堡"],
+  slime: [90, 9, 1.6, "近距离噬咬建筑"],
+  scout: [90, 8, 1.1, "快速挥爪，威胁前排"],
+  armored: [120, 24, 2.2, "重击建筑，优先攻击龟壳堡"],
   wisp: [210, 16, 2.6, "远程影弹，能袭击后排"],
-  shaman: [180, 13, 3, "诅咒投射，同时治疗同伴"],
-  boss: [205, 52, 3.2, "重击波及目标周围 90 范围"],
+  shaman: [170, 13, 3, "诅咒投射，同时治疗同伴"],
+  boss: [180, 52, 3.2, "重击波及目标周围 90 范围"],
 };
 for (const [type, [reach, attack, attackInterval, raid]] of Object.entries(
   raids,

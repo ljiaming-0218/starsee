@@ -1,16 +1,18 @@
 import { LEVELS, LEVEL_IDS, levelWaveCount } from "./levels.js";
 import { initialGame, starRating, towerStats } from "./game.js";
 import { TYPES, ENEMIES, DIFFICULTIES, TOTAL_WAVES } from "./content.js";
-export const SAVE_KEY = "evergreen.campaign.v4";
+export const SAVE_KEY = "evergreen.campaign.v5";
 export const RECORD_KEY = "evergreen.records.v3";
 export function restoreGame(storage) {
   try {
     const raw =
-      storage.getItem(SAVE_KEY) || storage.getItem("evergreen.campaign.v3");
+      storage.getItem(SAVE_KEY) ||
+      storage.getItem("evergreen.campaign.v4") ||
+      storage.getItem("evergreen.campaign.v3");
     if (!raw || raw.length > 200000) return null;
     const g = JSON.parse(raw);
     if (
-      ![3, 4].includes(g.version) ||
+      ![3, 4, 5].includes(g.version) ||
       !LEVELS[g.level] ||
       !DIFFICULTIES[g.difficulty] ||
       !["ready", "battle", "won", "lost"].includes(g.phase)
@@ -75,7 +77,7 @@ export function restoreGame(storage) {
     for (const t of g.towers) {
       const max = towerStats(t).maxHp;
       if (
-        g.version === 4 &&
+        g.version >= 4 &&
         (!Number.isFinite(t.hp) ||
           !Number.isFinite(t.maxHp) ||
           t.hp <= 0 ||
@@ -91,15 +93,42 @@ export function restoreGame(storage) {
     }
     for (const e of g.enemies) {
       e.attackCooldown = Math.max(0, Number(e.attackCooldown) || 0);
-      e.raidTime = Math.max(0, Number(e.raidTime) || 0);
-      e.marchTimer = Math.max(0, Number(e.marchTimer) || 0);
-      e.raidTarget = null;
+      e.attackWindup =
+        g.version === 5
+          ? Math.min(0.55, Math.max(0, Number(e.attackWindup) || 0))
+          : 0;
+      e.raidTarget =
+        g.version === 5 && g.towers.some((t) => t.id === e.raidTarget)
+          ? e.raidTarget
+          : null;
+      if (!e.raidTarget) e.attackWindup = 0;
+      delete e.raidTime;
+      delete e.marchTimer;
     }
     return {
       ...initialGame(g.difficulty, g.level),
       ...g,
-      version: 4,
-      shots: [],
+      version: 5,
+      shots: (Array.isArray(g.shots) ? g.shots : [])
+        .slice(0, 500)
+        .filter(
+          (s) =>
+            TYPES[s.type] &&
+            [
+              "x",
+              "y",
+              "tx",
+              "ty",
+              "damage",
+              "age",
+              "duration",
+              "target",
+              "owner",
+            ].every((k) => Number.isFinite(s[k])) &&
+            s.duration > 0 &&
+            s.damage >= 0 &&
+            s.age >= 0,
+        ),
       effects: [],
       particles: [],
       banner: "",
@@ -117,7 +146,7 @@ export function persistGame(storage, g) {
   try {
     storage.setItem(
       SAVE_KEY,
-      JSON.stringify({ ...g, shots: [], effects: [], particles: [] }),
+      JSON.stringify({ ...g, effects: [], particles: [] }),
     );
     return true;
   } catch {
