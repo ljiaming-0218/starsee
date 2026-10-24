@@ -1,3 +1,4 @@
+import { getLevel, levelWaveCount, levelPathLength, LEVELS } from "./levels.js";
 import {
   TYPES,
   ENEMIES,
@@ -10,35 +11,36 @@ import {
 export { TYPES, TOTAL_WAVES } from "./content.js";
 export const WIDTH = 1000,
   HEIGHT = 650;
-export const PATH = [
-  { x: -30, y: 119 },
-  { x: 755, y: 119 },
-  { x: 755, y: 292 },
-  { x: 230, y: 292 },
-  { x: 230, y: 484 },
-  { x: 1030, y: 484 },
-];
-const segments = PATH.slice(1).map((p, i) =>
-  Math.hypot(p.x - PATH[i].x, p.y - PATH[i].y),
+export const PATH = LEVELS.forest.path;
+export const pathLength = levelPathLength("forest");
+const geometry = Object.fromEntries(
+  Object.entries(LEVELS).map(([id, l]) => [
+    id,
+    l.path
+      .slice(1)
+      .map((p, i) => Math.hypot(p.x - l.path[i].x, p.y - l.path[i].y)),
+  ]),
 );
-export const pathLength = segments.reduce((a, b) => a + b, 0);
-export function positionAt(distance) {
+export function positionAt(distance, level = "forest") {
+  const l = getLevel(level),
+    segments = geometry[l.id];
   let d = Math.max(0, distance);
   for (let i = 0; i < segments.length; i++) {
     if (d <= segments[i]) {
       const t = d / segments[i];
       return {
-        x: PATH[i].x + (PATH[i + 1].x - PATH[i].x) * t,
-        y: PATH[i].y + (PATH[i + 1].y - PATH[i].y) * t,
+        x: l.path[i].x + (l.path[i + 1].x - l.path[i].x) * t,
+        y: l.path[i].y + (l.path[i + 1].y - l.path[i].y) * t,
       };
     }
     d -= segments[i];
   }
-  return { ...PATH.at(-1) };
+  return { ...l.path.at(-1) };
 }
-export function onPath(x, y, margin = 36) {
-  return PATH.slice(1).some((p, i) => {
-    const a = PATH[i];
+export function onPath(x, y, margin = 36, level = "forest") {
+  const path = getLevel(level).path;
+  return path.slice(1).some((p, i) => {
+    const a = path[i];
     return (
       x >= Math.min(a.x, p.x) - margin &&
       x <= Math.max(a.x, p.x) + margin &&
@@ -47,15 +49,16 @@ export function onPath(x, y, margin = 36) {
     );
   });
 }
-export function initialGame(difficulty = "normal") {
+export function initialGame(difficulty = "normal", level = "forest") {
   if (!DIFFICULTIES[difficulty]) difficulty = "normal";
   const maxLives = DIFFICULTIES[difficulty].lives;
   return {
-    version: 2,
+    version: 3,
+    level: getLevel(level).id,
     difficulty,
     maxLives,
     lives: maxLives,
-    gold: 320,
+    gold: getLevel(level).gold,
     wave: 0,
     kills: 0,
     score: 0,
@@ -78,11 +81,11 @@ export function initialGame(difficulty = "normal") {
     damageDealt: 0,
   };
 }
-export function waveCount(w) {
-  return wavePlan(w).length;
+export function waveCount(w, level) {
+  return wavePlan(w, level).length;
 }
 export function startWave(g) {
-  if (g.phase !== "ready" || g.wave >= TOTAL_WAVES) return false;
+  if (g.phase !== "ready" || g.wave >= levelWaveCount(g.level)) return false;
   g.wave++;
   g.phase = "battle";
   g.spawned = 0;
@@ -93,15 +96,13 @@ export function startWave(g) {
 }
 // Keep the tiny landmark footprints free while the rest of the grass remains buildable.
 export function canPlace(g, x, y) {
+  const l = getLevel(g.level);
   return (
     Number.isFinite(x) &&
     Number.isFinite(y) &&
-    x >= 265 &&
-    x <= 725 &&
-    ((y >= 170 && y <= 250) || (y >= 345 && y <= 440)) &&
-    !onPath(x, y) &&
-    Math.hypot(x - 500, y - 195) > 48 &&
-    Math.hypot(x - 590, y - 395) > 52 &&
+    l.areas.some((a) => x >= a.x1 && x <= a.x2 && y >= a.y1 && y <= a.y2) &&
+    !onPath(x, y, 36, l.id) &&
+    !l.obstacles.some((o) => Math.hypot(x - o.x, y - o.y) <= o.r) &&
     !g.towers.some((t) => Math.hypot(t.x - x, t.y - y) < 61)
   );
 }
@@ -135,9 +136,9 @@ export function placeTower(g, type, x, y) {
   g.effects.push({ type: "build", x, y, life: 0.7, max: 0.7 });
   return t;
 }
-export function towerStats(t) {
+export function towerStats(t, g = null) {
   const d = TYPES[t.type];
-  return {
+  const stats = {
     ...d,
     damage:
       d.damage *
@@ -146,12 +147,45 @@ export function towerStats(t) {
         ? 1.45
         : t.specialization === "siege"
           ? 1.25
-          : 1),
-    range: d.range + (t.specialization === "sniper" ? 60 : 0),
+          : t.specialization === "molten"
+            ? 1.6
+            : 1),
+    range:
+      d.range +
+      (t.specialization === "sniper"
+        ? 60
+        : t.specialization === "rail"
+          ? 45
+          : t.specialization === "wide"
+            ? 70
+            : t.specialization === "firestorm"
+              ? 40
+              : 0),
     interval: d.interval / Math.pow(1.25, t.speedLevel),
     radius: t.specialization === "siege" ? 112 : 67,
     chain: t.specialization === "chain" ? 5 : 3,
+    auraDamage:
+      0.2 +
+      t.damageLevel * 0.08 +
+      (t.specialization === "warbanner" ? 0.15 : 0),
+    auraRate: 0.15 + t.speedLevel * 0.06,
   };
+  if (g && t.type !== "beacon") {
+    let damageBuff = 0,
+      speedBuff = 0;
+    for (const b of g.towers)
+      if (b.type === "beacon") {
+        const aura = towerStats(b);
+        if (Math.hypot(t.x - b.x, t.y - b.y) <= aura.range) {
+          damageBuff = Math.max(damageBuff, aura.auraDamage);
+          speedBuff = Math.max(speedBuff, aura.auraRate);
+        }
+      }
+    stats.damage *= 1 + damageBuff;
+    stats.interval /= 1 + speedBuff;
+    stats.buffed = damageBuff > 0;
+  }
+  return stats;
 }
 export function upgradeCost(t, kind) {
   return Math.round(TYPES[t.type].cost * 0.65 * (1 + t[kind + "Level"] * 0.65));
@@ -223,15 +257,16 @@ export function makeEnemy(g, type, distance = 0) {
       (48 + g.wave * 19) *
       Math.pow(1.105, Math.max(0, g.wave - 1)) *
       def.hp *
-      DIFFICULTIES[g.difficulty].hp;
+      DIFFICULTIES[g.difficulty].hp *
+      getLevel(g.level).hp;
   return {
     id: g.id++,
     type,
-    ...positionAt(distance),
+    ...positionAt(distance, g.level),
     distance,
     hp,
     maxHp: hp,
-    speed: def.speed + g.wave * 0.6,
+    speed: (def.speed + g.wave * 0.6) * getLevel(g.level).speed,
     reward: def.reward,
     boss: type === "boss",
     slow: 0,
@@ -241,6 +276,10 @@ export function makeEnemy(g, type, distance = 0) {
     burnDps: 0,
     burnOwner: null,
     vulnerable: 0,
+    poison: 0,
+    poisonStacks: 0,
+    poisonDps: 0,
+    poisonOwner: null,
     escaped: false,
   };
 }
@@ -250,6 +289,7 @@ export function damageEnemy(g, e, amount, type, owner = null) {
   let damage = amount;
   if (type === "arrow") damage *= 1 - def.armor;
   else if (type === "cannon") damage *= 1 - def.armor * 0.35;
+  else if (type === "ballista") damage *= 1 - def.armor * 0.5;
   else damage *= 1 - def.magicResist;
   if (e.vulnerable > 0) damage *= 1.3;
   const actual = Math.min(e.hp, damage);
@@ -297,7 +337,13 @@ export function castSpell(g, type, point = null) {
   if (type === "heal") {
     if (g.lives >= g.maxLives) return false;
     g.lives = Math.min(g.maxLives, g.lives + 4);
-    g.effects.push({ type: "heal", x: 940, y: 484, life: 1.3, max: 1.3 });
+    g.effects.push({
+      type: "heal",
+      x: 940,
+      y: getLevel(g.level).path.at(-1).y,
+      life: 1.3,
+      max: 1.3,
+    });
   } else {
     if (!point || point.x < 0 || point.x > 1000 || point.y < 0 || point.y > 650)
       return false;
@@ -316,7 +362,23 @@ function impact(g, s) {
   );
   const x = target?.x ?? s.tx,
     y = target?.y ?? s.ty;
-  if (s.type === "cannon") {
+  if (s.type === "venom" && target) {
+    const victims =
+      s.spec === "plague"
+        ? g.enemies.filter((e) => Math.hypot(e.x - x, e.y - y) < 70)
+        : [target];
+    for (const e of victims) {
+      damageEnemy(g, e, s.damage, "venom", s.owner);
+      e.poison = s.spec === "toxin" ? 6 : 4;
+      e.poisonStacks = Math.min(
+        s.spec === "toxin" ? 5 : 3,
+        (e.poisonStacks || 0) + 1,
+      );
+      e.poisonDps = s.damage * 0.65 * e.poisonStacks;
+      e.poisonOwner = s.owner;
+    }
+    g.effects.push({ type: "poison", x, y, life: 0.45, max: 0.45 });
+  } else if (s.type === "cannon") {
     for (const e of g.enemies)
       if (Math.hypot(e.x - x, e.y - y) < s.radius) {
         damageEnemy(g, e, s.damage, "cannon", s.owner);
@@ -335,7 +397,13 @@ function impact(g, s) {
       radius: s.radius,
     });
   } else if (target) {
-    damageEnemy(g, target, s.damage, s.type, s.owner);
+    damageEnemy(
+      g,
+      target,
+      s.damage * (s.spec === "giant" && target.boss ? 2 : 1),
+      s.type,
+      s.owner,
+    );
     if (s.type === "frost") {
       target.slow = s.spec === "glacier" ? 3 : 2;
       target.slowStrength = s.spec === "glacier" ? 0.7 : 0.45;
@@ -351,11 +419,41 @@ function impact(g, s) {
   }
 }
 function attack(g, t, target) {
-  const stats = towerStats(t);
+  const stats = towerStats(t, g);
   t.cooldown = stats.interval;
   t.recoil = 0.2;
   t.shots++;
   t.angle = Math.atan2(target.y - t.y, target.x - t.x);
+  if (t.type === "flame") {
+    const angle = t.angle,
+      cone = t.specialization === "firestorm" ? 0.85 : 0.57;
+    for (const e of g.enemies) {
+      const a = Math.atan2(e.y - t.y, e.x - t.x),
+        delta = Math.atan2(Math.sin(a - angle), Math.cos(a - angle));
+      if (
+        e.hp > 0 &&
+        !e.escaped &&
+        Math.hypot(e.x - t.x, e.y - t.y) <= stats.range &&
+        Math.abs(delta) <= cone
+      ) {
+        damageEnemy(g, e, stats.damage, "flame", t.id);
+        e.burn = t.specialization === "molten" ? 3 : 1.5;
+        e.burnDps = stats.damage * 1.5;
+        e.burnOwner = t.id;
+      }
+    }
+    g.effects.push({
+      type: "flame",
+      x: t.x,
+      y: t.y - 25,
+      angle,
+      radius: stats.range,
+      cone,
+      life: 0.25,
+      max: 0.25,
+    });
+    return;
+  }
   if (t.type === "storm") {
     const struck = [];
     let current = target,
@@ -398,6 +496,33 @@ function attack(g, t, target) {
     return;
   }
   let targets = [target];
+  if (t.type === "ballista") {
+    const dx = Math.cos(t.angle),
+      dy = Math.sin(t.angle),
+      max = t.specialization === "rail" ? 4 : 2;
+    targets = [
+      target,
+      ...g.enemies
+        .filter((e) => {
+          const x = e.x - t.x,
+            y = e.y - t.y,
+            p = x * dx + y * dy;
+          return (
+            e !== target &&
+            e.hp > 0 &&
+            !e.escaped &&
+            p > 0 &&
+            p < stats.range &&
+            Math.abs(x * dy - y * dx) < 24
+          );
+        })
+        .sort(
+          (a, b) =>
+            Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y),
+        )
+        .slice(0, max - 1),
+    ];
+  }
   if (t.specialization === "volley")
     targets = [
       target,
@@ -449,7 +574,7 @@ export function tick(g, dt) {
     g.spellCooldowns[key] = Math.max(0, g.spellCooldowns[key] - dt);
   g.comboTimer = Math.max(0, g.comboTimer - dt);
   if (!g.comboTimer) g.combo = 0;
-  const plan = wavePlan(g.wave);
+  const plan = wavePlan(g.wave, g.level);
   if (g.spawned < plan.length && g.spawnTimer <= 0) {
     const type = plan[g.spawned];
     g.enemies.push(makeEnemy(g, type));
@@ -470,14 +595,25 @@ export function tick(g, dt) {
       e.burn = Math.max(0, e.burn - dt);
       damageEnemy(g, e, e.burnDps * dt, "burn", e.burnOwner);
     }
+    if (e.poison > 0) {
+      e.poison = Math.max(0, e.poison - dt);
+      damageEnemy(g, e, (e.poisonDps || 0) * dt, "poison", e.poisonOwner);
+      if (!e.poison) e.poisonStacks = 0;
+    }
     if (e.hp <= 0) continue;
     e.distance +=
       e.speed * (e.slow > 0 ? 1 - e.slowStrength * (e.boss ? 0.5 : 1) : 1) * dt;
-    Object.assign(e, positionAt(e.distance));
-    if (e.distance >= pathLength) {
+    Object.assign(e, positionAt(e.distance, g.level));
+    if (e.distance >= levelPathLength(g.level)) {
       e.escaped = true;
       g.lives = Math.max(0, g.lives - (e.boss ? 5 : 1));
-      g.effects.push({ type: "leak", x: 965, y: 484, life: 0.7, max: 0.7 });
+      g.effects.push({
+        type: "leak",
+        x: 965,
+        y: getLevel(g.level).path.at(-1).y,
+        life: 0.7,
+        max: 0.7,
+      });
     }
   }
   for (const shaman of g.enemies)
@@ -489,8 +625,12 @@ export function tick(g, dt) {
           e !== shaman &&
           Math.hypot(e.x - shaman.x, e.y - shaman.y) < 95
         )
-          e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.016 * dt);
+          e.hp = Math.min(
+            e.maxHp,
+            e.hp + e.maxHp * 0.016 * dt * (e.poison > 0 ? 0.5 : 1),
+          );
   for (const t of g.towers) {
+    if (t.type === "beacon") continue;
     t.cooldown -= dt;
     t.recoil = Math.max(0, t.recoil - dt);
     const target = selectTarget(t, g.enemies);
@@ -519,7 +659,7 @@ export function tick(g, dt) {
     const bonus = 50 + g.wave * 7;
     g.gold += bonus;
     g.score += bonus * 10;
-    g.phase = g.wave === TOTAL_WAVES ? "won" : "ready";
+    g.phase = g.wave === levelWaveCount(g.level) ? "won" : "ready";
     g.banner = `第 ${g.wave} 波已守住`;
     g.bannerTime = 2.8;
     g.shots = [];

@@ -1,14 +1,16 @@
-import { initialGame } from "./game.js";
+import { LEVELS, LEVEL_IDS, levelWaveCount } from "./levels.js";
+import { initialGame, starRating } from "./game.js";
 import { TYPES, ENEMIES, DIFFICULTIES, TOTAL_WAVES } from "./content.js";
-export const SAVE_KEY = "evergreen.campaign.v2";
-export const RECORD_KEY = "evergreen.records.v2";
+export const SAVE_KEY = "evergreen.campaign.v3";
+export const RECORD_KEY = "evergreen.records.v3";
 export function restoreGame(storage) {
   try {
     const raw = storage.getItem(SAVE_KEY);
     if (!raw || raw.length > 200000) return null;
     const g = JSON.parse(raw);
     if (
-      g.version !== 2 ||
+      g.version !== 3 ||
+      !LEVELS[g.level] ||
       !DIFFICULTIES[g.difficulty] ||
       !["ready", "battle", "won", "lost"].includes(g.phase)
     )
@@ -30,7 +32,7 @@ export function restoreGame(storage) {
       if (!Number.isFinite(g[key])) return null;
     if (
       g.wave < 0 ||
-      g.wave > TOTAL_WAVES ||
+      g.wave > levelWaveCount(g.level) ||
       g.gold < 0 ||
       g.lives < 0 ||
       g.lives > g.maxLives
@@ -70,7 +72,7 @@ export function restoreGame(storage) {
     )
       return null;
     return {
-      ...initialGame(g.difficulty),
+      ...initialGame(g.difficulty, g.level),
       ...g,
       shots: [],
       effects: [],
@@ -98,18 +100,48 @@ export function persistGame(storage, g) {
   }
 }
 export function getRecords(storage) {
+  const empty = {
+    bestScore: 0,
+    wins: 0,
+    levels: Object.fromEntries(
+      LEVEL_IDS.map((id) => [id, { stars: 0, bestScore: 0, wins: 0 }]),
+    ),
+  };
   try {
-    const r = JSON.parse(storage.getItem(RECORD_KEY) || "{}");
-    return { bestScore: Number(r.bestScore) || 0, wins: Number(r.wins) || 0 };
-  } catch {
-    return { bestScore: 0, wins: 0 };
-  }
+    const r = JSON.parse(
+      storage.getItem(RECORD_KEY) ||
+        storage.getItem("evergreen.records.v2") ||
+        "{}",
+    );
+    empty.bestScore = Math.max(0, Number(r.bestScore) || 0);
+    empty.wins = Math.max(0, Number(r.wins) || 0);
+    for (const id of LEVEL_IDS) {
+      const v = r.levels?.[id];
+      if (v)
+        empty.levels[id] = {
+          stars: Math.min(3, Math.max(0, Number(v.stars) || 0)),
+          bestScore: Math.max(0, Number(v.bestScore) || 0),
+          wins: Math.max(0, Number(v.wins) || 0),
+        };
+    }
+  } catch {}
+  return empty;
 }
 export function recordResult(storage, g) {
-  const record = getRecords(storage);
+  const record = getRecords(storage),
+    id = LEVELS[g.level] ? g.level : "forest",
+    prev = record.levels[id];
   const next = {
     bestScore: Math.max(record.bestScore, g.score),
     wins: record.wins + (g.phase === "won" ? 1 : 0),
+    levels: {
+      ...record.levels,
+      [id]: {
+        bestScore: Math.max(prev.bestScore, g.score),
+        wins: prev.wins + (g.phase === "won" ? 1 : 0),
+        stars: Math.max(prev.stars, g.phase === "won" ? starRating(g) : 0),
+      },
+    },
   };
   try {
     storage.setItem(RECORD_KEY, JSON.stringify(next));

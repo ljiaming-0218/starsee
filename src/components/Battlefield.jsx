@@ -1,3 +1,4 @@
+import { getLevel, levelWaveCount } from "../levels.js";
 import React from "react";
 import {
   Trees,
@@ -10,10 +11,10 @@ import {
   Star,
   RotateCcw,
 } from "lucide-react";
-import { DIFFICULTIES, WAVES } from "../content.js";
+import { DIFFICULTIES, levelWave } from "../content.js";
 import { starRating } from "../game.js";
 const ENEMY_BOSS_NAME = "远古岩石巨像";
-export default function Battlefield({ state, onPoint, onPlace }) {
+export default function Battlefield({ state, onPoint, onPlace, onNext }) {
   const {
     g,
     canvas,
@@ -31,14 +32,16 @@ export default function Battlefield({ state, onPoint, onPlace }) {
   } = state;
   const ended = ["won", "lost"].includes(g.phase),
     boss = g.enemies.find((e) => e.boss);
+  const stage = getLevel(g.level),
+    total = levelWaveCount(g.level);
   return (
     <div className={`battlefield ${build || spell ? "is-targeting" : ""}`}>
       <canvas
         ref={canvas}
-        width={1000}
-        height={650}
+        width={500}
+        height={325}
         tabIndex={0}
-        aria-label="森林战场。选择塔后点击草地标记建造。方向键移动，Enter 确认。"
+        aria-label="像素战场。选择塔后点击空地标记建造。方向键移动，Enter 确认。"
         onPointerMove={(e) => {
           hover.current = onPoint(e, view.current.spell !== "meteor");
         }}
@@ -75,15 +78,13 @@ export default function Battlefield({ state, onPoint, onPlace }) {
         </span>
         <span>
           <i />
-          {g.phase === "battle" ? "防线交战中" : "森林之心 · 守护中"}
+          {g.phase === "battle" ? "防线交战中" : `${stage.name} · 防线待命`}
         </span>
       </div>
       {assets !== "ready" && (
         <div className="board-overlay loading-overlay">
           <Trees size={40} />
-          <h2>
-            {assets === "error" ? "林间的道路暂时迷失" : "正在进入翡翠林地"}
-          </h2>
+          <h2>{assets === "error" ? "林间的道路暂时迷失" : "正在进入关卡"}</h2>
           <p>{assetError || "准备地图与守卫者…"}</p>
           {assets === "error" && (
             <button
@@ -117,9 +118,9 @@ export default function Battlefield({ state, onPoint, onPlace }) {
         <div
           className={`wave-banner ${g.banner === "巨像来袭" ? "boss-banner" : ""}`}
         >
-          <span>THE EMERALD WOOD</span>
+          <span>{stage.en}</span>
           <strong>{g.banner}</strong>
-          <small>{WAVES[Math.max(0, g.wave - 1)]?.name}</small>
+          <small>{levelWave(Math.max(1, g.wave), g.level)?.name}</small>
         </div>
       )}
       {!g.wave && !g.towers.length && assets === "ready" && !paused && (
@@ -128,7 +129,7 @@ export default function Battlefield({ state, onPoint, onPlace }) {
             <Shield size={17} />
             守卫者，先构筑你的防线
           </span>
-          <p>选一座塔，点击发光的草地标记。准备好后开始波次。</p>
+          <p>选一座塔，点击发光的空地标记。准备好后开始波次。</p>
         </div>
       )}
       {spell === "meteor" && !paused && (
@@ -172,7 +173,9 @@ export default function Battlefield({ state, onPoint, onPlace }) {
               : "EVERY GUARDIAN RISES AGAIN"}
           </span>
           <h2>
-            {g.phase === "won" ? "森林，安然无恙。" : "黎明之前，再战一次。"}
+            {g.phase === "won"
+              ? `${stage.name} · 守护成功`
+              : "黎明之前，再战一次。"}
           </h2>
           <div className="rating">
             {[1, 2, 3].map((n) => (
@@ -192,13 +195,15 @@ export default function Battlefield({ state, onPoint, onPlace }) {
           </div>
           <p>
             {g.phase === "won"
-              ? "十二次守望，换来这片绿意长存。"
+              ? `已守住 ${total} 波入侵。星级已记录在章节地图。`
               : "调整阵容，保留秘术。森林仍在等你归来。"}
           </p>
           <div className="end-stats">
             <span>
               守住波次
-              <b>{g.phase === "won" ? 12 : Math.max(0, g.wave - 1)} / 12</b>
+              <b>
+                {g.phase === "won" ? total : Math.max(0, g.wave - 1)} / {total}
+              </b>
             </span>
             <span>
               击败敌人<b>{g.kills}</b>
@@ -211,6 +216,11 @@ export default function Battlefield({ state, onPoint, onPlace }) {
             <RotateCcw size={16} />
             重新开始
           </button>
+          {g.phase === "won" && (
+            <button className="gold-button next-stage" onClick={onNext}>
+              继续冒险 / 选关
+            </button>
+          )}
           <button className="quiet-button" onClick={() => setModal("settings")}>
             调整难度
           </button>

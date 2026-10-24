@@ -1,3 +1,9 @@
+import {
+  LEVEL_IDS,
+  getLevel,
+  levelWaveCount,
+  levelPathLength,
+} from "./levels.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -60,8 +66,8 @@ test("placement protects road, scenery, tower spacing, and bank balance", () => 
   const g = initialGame();
   assert(onPath(400, 119));
   assert(!placeTower(g, "arrow", 400, 119));
-  assert(!canPlace(g, 500, 195));
-  assert(!canPlace(g, 590, 395));
+  assert(!canPlace(g, 560, 185));
+  assert(!canPlace(g, 650, 395));
   assert(!canPlace(g, 0, 0));
   assert(!canPlace(g, NaN, 225));
   assert(placeTower(g, "arrow", 425, 225));
@@ -261,7 +267,10 @@ test("records persist best score and win count; star rating reflects remaining l
   g.phase = "won";
   g.score = 1200;
   recordResult(storage, g);
-  assert.deepEqual(getRecords(storage), { bestScore: 1200, wins: 1 });
+  assert.equal(getRecords(storage).bestScore, 1200);
+  assert.equal(getRecords(storage).wins, 1);
+  assert.equal(getRecords(storage).levels.forest.stars, 3);
+  assert.equal(getRecords(storage).levels.glacier.stars, 0);
   g.score = 300;
   g.phase = "lost";
   recordResult(storage, g);
@@ -272,82 +281,108 @@ test("records persist best score and win count; star rating reflects remaining l
   g.lives = 1;
   assert.equal(starRating(g), 1);
 });
-test("full 12-wave combat can resolve victory, including mixed enemies and final double boss", () => {
-  const g = initialGame();
-  g.gold = 100000;
-  for (let y = 175; y <= 425; y += 50)
-    for (let x = 275; x <= 725; x += 50)
-      if (canPlace(g, x, y)) {
-        const type = ["arrow", "cannon", "frost", "storm"][g.towers.length % 4];
-        const t = placeTower(g, type, x, y);
-        for (let i = 0; i < 3; i++) {
-          upgrade(g, t.id, "damage");
-          upgrade(g, t.id, "speed");
+test("every level resolves its own final wave to victory with fully upgraded defenses", () => {
+  for (const level of LEVEL_IDS) {
+    const g = initialGame("normal", level);
+    g.gold = 100000;
+    for (let y = 75; y <= 575; y += 50)
+      for (let x = 75; x <= 925; x += 50)
+        if (canPlace(g, x, y)) {
+          const type = Object.keys(TYPES)[g.towers.length % 8];
+          const t = placeTower(g, type, x, y);
+          for (let i = 0; i < 3; i++) {
+            upgrade(g, t.id, "damage");
+            upgrade(g, t.id, "speed");
+          }
+          specialize(g, t.id, SPECIALIZATIONS[type][0].id);
         }
-        specialize(g, t.id, SPECIALIZATIONS[type][0].id);
-      }
-  for (let w = 1; w <= TOTAL_WAVES; w++) {
-    assert(startWave(g));
-    for (let i = 0; i < 14000 && g.phase === "battle"; i++) tick(g, 0.05);
-    assert.notEqual(g.phase, "battle");
-    assert.notEqual(g.phase, "lost");
+    for (let w = 1; w <= levelWaveCount(level); w++) {
+      assert(startWave(g));
+      for (let i = 0; i < 14000 && g.phase === "battle"; i++) tick(g, 0.05);
+      assert.notEqual(g.phase, "battle");
+      assert.notEqual(g.phase, "lost");
+    }
+    assert.equal(g.phase, "won");
+    assert.equal(g.wave, levelWaveCount(level));
+    assert(!startWave(g));
+    assert.equal(positionAt(levelPathLength(level), level).x, 1030);
   }
-  assert.equal(g.phase, "won");
-  assert.equal(g.wave, TOTAL_WAVES);
-  assert.equal(
-    g.kills,
-    Array.from({ length: TOTAL_WAVES }, (_, i) => waveCount(i + 1)).reduce(
-      (a, b) => a + b,
-      0,
-    ),
-  );
-  assert.equal(positionAt(pathLength).x, 1030);
 });
-test("normal campaign is winnable with earned gold, eight mixed towers, and timed spells", () => {
-  const g = initialGame();
-  const positions = [
+const CAMPAIGN_PLANS = {
+  forest: [
     ["arrow", 425, 225],
+    ["cannon", 625, 225],
     ["arrow", 325, 375],
-    ["frost", 675, 375],
-    ["storm", 625, 225],
-    ["cannon", 425, 425],
-    ["storm", 325, 225],
-    ["arrow", 725, 425],
-    ["storm", 525, 375],
-  ];
-  let next = 0;
-  for (let w = 1; w <= TOTAL_WAVES; w++) {
-    for (let i = 0; i < 2 && next < positions.length; i++) {
-      const [type, x, y] = positions[next];
-      if (g.gold < TYPES[type].cost) break;
-      assert(placeTower(g, type, x, y));
-      next++;
-    }
-    if (g.towers.length >= 5)
-      for (const t of g.towers) {
-        for (const kind of ["damage", "speed"])
-          if (t[kind + "Level"] < 2) upgrade(g, t.id, kind);
-        if (!t.specialization)
-          specialize(g, t.id, SPECIALIZATIONS[t.type][0].id);
+    ["beacon", 475, 175],
+    ["frost", 525, 375],
+    ["venom", 375, 425],
+    ["ballista", 675, 175],
+    ["flame", 575, 425],
+    ["storm", 375, 175],
+  ],
+  glacier: [
+    ["arrow", 425, 325],
+    ["cannon", 575, 325],
+    ["arrow", 225, 275],
+    ["venom", 775, 275],
+    ["ballista", 525, 525],
+    ["beacon", 475, 275],
+    ["frost", 575, 225],
+    ["flame", 225, 375],
+    ["storm", 775, 375],
+  ],
+  volcano: [
+    ["arrow", 375, 275],
+    ["cannon", 625, 325],
+    ["arrow", 325, 375],
+    ["ballista", 725, 225],
+    ["venom", 725, 475],
+    ["frost", 425, 375],
+    ["beacon", 625, 225],
+    ["flame", 725, 375],
+    ["storm", 325, 125],
+    ["storm", 675, 525],
+  ],
+};
+test("all three normal campaigns are winnable using earned gold and timed spells", () => {
+  for (const level of LEVEL_IDS) {
+    const g = initialGame("normal", level);
+    let next = 0;
+    for (let w = 1; w <= levelWaveCount(level); w++) {
+      for (let k = 0; k < 3 && next < CAMPAIGN_PLANS[level].length; k++) {
+        const [type, x, y] = CAMPAIGN_PLANS[level][next];
+        if (g.gold < TYPES[type].cost) break;
+        assert(
+          placeTower(g, type, x, y),
+          `${level}: invalid build ${type} ${x},${y}`,
+        );
+        next++;
       }
-    assert(startWave(g));
-    for (let i = 0; i < 12000 && g.phase === "battle"; i++) {
-      if (g.lives <= g.maxLives - 4) castSpell(g, "heal");
-      if (g.spellCooldowns.meteor <= 0 && g.enemies.length >= 6) {
-        const e =
-          g.enemies.find((e) => e.boss) ||
-          g.enemies[Math.floor(g.enemies.length / 2)];
-        castSpell(g, "meteor", { x: e.x, y: e.y });
+      if (g.towers.length >= 5)
+        for (const t of g.towers) {
+          for (const kind of ["damage", "speed"])
+            if (t[kind + "Level"] < 2) upgrade(g, t.id, kind);
+          if (!t.specialization)
+            specialize(g, t.id, SPECIALIZATIONS[t.type][0].id);
+        }
+      assert(startWave(g));
+      for (let i = 0; i < 14000 && g.phase === "battle"; i++) {
+        if (g.lives <= g.maxLives - 4) castSpell(g, "heal");
+        if (g.spellCooldowns.meteor <= 0 && g.enemies.length >= 5) {
+          const e =
+            g.enemies.find((e) => e.boss) ||
+            g.enemies[Math.floor(g.enemies.length / 2)];
+          castSpell(g, "meteor", { x: e.x, y: e.y });
+        }
+        tick(g, 0.05);
       }
-      tick(g, 0.05);
+      assert.notEqual(g.phase, "lost", `${level} lost at wave ${w}`);
+      assert.notEqual(g.phase, "battle");
+      assert(g.gold >= 0);
     }
-    assert.notEqual(g.phase, "lost", `lost at wave ${w}`);
-    assert.notEqual(g.phase, "battle");
-    assert(g.gold >= 0);
+    assert.equal(g.phase, "won");
+    assert(g.lives > 0);
   }
-  assert.equal(g.phase, "won");
-  assert(g.lives > 0);
-  assert.equal(g.towers.length, 8);
 });
 test("advanced specializations change multishot, splash, burn, freeze, vulnerability, and overload damage", () => {
   {
@@ -413,4 +448,185 @@ test("burning enemies killed at the exit reward the player instead of leaking a 
   tick(g, 0.1);
   assert.equal(g.kills, 1);
   assert.equal(g.lives, g.maxLives);
+});
+test("all eight towers have two specializations and distinct combat roles", () => {
+  assert.equal(Object.keys(TYPES).length, 8);
+  for (const type of Object.keys(TYPES)) {
+    assert.equal(SPECIALIZATIONS[type].length, 2);
+    assert(TYPES[type].cost > 0);
+  }
+  assert.notEqual(TYPES.venom.role, TYPES.flame.role);
+});
+test("poison stacks, persists between shots, and its specialization raises the cap", () => {
+  const { g, t } = scenario("venom");
+  const e = stationary(g);
+  e.hp = e.maxHp = 10000;
+  advance(g, 3.4);
+  assert.equal(e.poisonStacks, 3);
+  assert(e.poison > 0);
+  t.cooldown = 100;
+  const hp = e.hp;
+  advance(g, 0.3);
+  assert(e.hp < hp);
+  t.specialization = "toxin";
+  t.cooldown = 0;
+  advance(g, 2);
+  assert.equal(e.poisonStacks, 5);
+  assert(e.poison > 4);
+});
+test("poison halves shaman healing and plague spreads to nearby enemies", () => {
+  const { g, t } = scenario("venom");
+  t.cooldown = 100;
+  const e = stationary(g);
+  e.hp = 500;
+  e.poison = 2;
+  e.poisonDps = 0;
+  stationary(g, "shaman", 430);
+  tick(g, 0.1);
+  assert(Math.abs(e.hp - 500.8) < 0.001);
+  t.specialization = "plague";
+  t.cooldown = 0;
+  advance(g, 0.4);
+  assert(g.enemies.every((e) => e.poison > 0));
+});
+test("flamethrower damages a forward cone and adds burning without hitting off-angle foes", () => {
+  const { g, t } = scenario("flame");
+  t.y = 175;
+  const a = stationary(g, "slime", 425),
+    b = stationary(g, "slime", 450),
+    c = stationary(g, "slime", 360);
+  tick(g, 0.01);
+  assert(a.hp < 1000 && b.hp < 1000);
+  assert.equal(c.hp, 1000);
+  assert(a.burn > 0);
+  assert(g.effects.some((e) => e.type === "flame"));
+});
+test("ballista pierces two targets by default and four with rail specialization", () => {
+  for (const max of [2, 4]) {
+    const { g, t } = scenario("ballista");
+    t.y = 175;
+    if (max === 4) t.specialization = "rail";
+    for (let i = 0; i < 4; i++) stationary(g, "slime", 425 + i * 2);
+    tick(g, 0.01);
+    assert.equal(g.shots.length, max);
+    advance(g, 0.3);
+    assert.equal(g.enemies.filter((e) => e.hp < 1000).length, max);
+  }
+});
+test("beacon boosts nearby allies, never shoots, and same-type auras do not stack", () => {
+  const { g, t } = scenario("arrow");
+  const a = placeTower(g, "beacon", 475, 175),
+    b = placeTower(g, "beacon", 375, 175);
+  assert(a && b);
+  const base = towerStats(t),
+    buffed = towerStats(t, g);
+  assert(Math.abs(buffed.damage - base.damage * 1.2) < 0.001);
+  assert(Math.abs(buffed.interval - base.interval / 1.15) < 0.001);
+  upgrade(g, a.id, "damage");
+  assert(Math.abs(towerStats(t, g).damage - base.damage * 1.28) < 0.001);
+  stationary(g);
+  advance(g, 1);
+  assert.equal(a.shots, 0);
+  assert.equal(b.shots, 0);
+  sell(g, a.id);
+  sell(g, b.id);
+  assert.equal(towerStats(t, g).damage, base.damage);
+});
+test("each stage has its own path, starting economy, spawn point and wave count", () => {
+  assert.deepEqual(
+    LEVEL_IDS.map((id) => levelWaveCount(id)),
+    [8, 10, 12],
+  );
+  assert.equal(
+    new Set(LEVEL_IDS.map((id) => JSON.stringify(getLevel(id).path))).size,
+    3,
+  );
+  for (const level of LEVEL_IDS) {
+    const g = initialGame("normal", level);
+    assert.equal(g.gold, getLevel(level).gold);
+    startWave(g);
+    tick(g, 0.01);
+    assert.equal(g.enemies[0].y, getLevel(level).path[0].y);
+    const center = positionAt(levelPathLength(level) / 2, level);
+    assert(onPath(center.x, center.y, 36, level));
+    assert(!canPlace(g, center.x, center.y));
+  }
+});
+test("level stars persist independently and later lower ratings never erase a best rating", () => {
+  const data = new Map(),
+    store = { getItem: (k) => data.get(k), setItem: (k, v) => data.set(k, v) };
+  const a = initialGame("normal", "forest");
+  a.phase = "won";
+  a.score = 5000;
+  recordResult(store, a);
+  const b = initialGame("normal", "glacier");
+  b.phase = "won";
+  b.lives = 11;
+  b.score = 3000;
+  recordResult(store, b);
+  a.lives = 1;
+  recordResult(store, a);
+  const r = getRecords(store);
+  assert.equal(r.levels.forest.stars, 3);
+  assert.equal(r.levels.glacier.stars, 2);
+  assert.equal(r.levels.volcano.stars, 0);
+  assert.equal(r.levels.glacier.bestScore, 3000);
+  assert.equal(r.bestScore, 5000);
+});
+test("mid-campaign saves retain stage, advanced towers and active poison status", () => {
+  const g = initialGame("normal", "glacier");
+  g.gold = 1000;
+  placeTower(g, "venom", 425, 325);
+  placeTower(g, "beacon", 475, 275);
+  startWave(g);
+  advance(g, 8);
+  const data = new Map(),
+    store = { getItem: (k) => data.get(k), setItem: (k, v) => data.set(k, v) };
+  persistGame(store, g);
+  const restored = restoreGame(store);
+  assert.equal(restored.level, "glacier");
+  assert.equal(restored.towers[0].type, "venom");
+  assert.equal(restored.towers[1].type, "beacon");
+  assert.equal(restored.gold, g.gold);
+  assert.equal(restored.wave, g.wave);
+  tick(restored, 0.1);
+});
+test("new specialization branches extend fire range, strengthen burn, hunt bosses and widen auras", () => {
+  {
+    const { g, t } = scenario("flame");
+    t.y = 175;
+    t.specialization = "firestorm";
+    const e = stationary(g, "slime", 540);
+    tick(g, 0.01);
+    assert(e.hp < 1000);
+    assert.equal(towerStats(t).range, 160);
+  }
+  {
+    const { g, t } = scenario("flame");
+    t.y = 175;
+    t.specialization = "molten";
+    const e = stationary(g);
+    tick(g, 0.01);
+    assert.equal(e.hp, 984);
+    assert.equal(e.burn, 3);
+  }
+  {
+    const { g, t } = scenario("ballista");
+    t.specialization = "giant";
+    const e = stationary(g, "boss");
+    advance(g, 0.3);
+    assert(Math.abs(e.hp - 851.5) < 0.001);
+  }
+  {
+    const { g, t } = scenario("arrow");
+    const b = placeTower(g, "beacon", 625, 225);
+    assert.equal(towerStats(t, g).damage, 22);
+    b.specialization = "wide";
+    assert.equal(towerStats(b).range, 225);
+    assert(Math.abs(towerStats(t, g).damage - 26.4) < 0.001);
+    b.x = 475;
+    b.y = 175;
+    b.specialization = "warbanner";
+    assert(Math.abs(towerStats(t, g).damage - 29.7) < 0.001);
+  }
 });

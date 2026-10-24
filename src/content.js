@@ -1,3 +1,4 @@
+import { getLevel } from "./levels.js";
 export const TOTAL_WAVES = 12;
 export const TYPES = {
   arrow: {
@@ -45,6 +46,52 @@ export const TYPES = {
     desc: "闪电在 3 个敌人间跳跃，无视护甲。每次弹跳保留 78% 伤害。",
   },
 };
+Object.assign(TYPES, {
+  venom: {
+    name: "毒沼炼金塔",
+    en: "VENOM",
+    cost: 110,
+    range: 150,
+    damage: 10,
+    interval: 0.8,
+    color: "#b4db65",
+    role: "叠毒 · 抑疗",
+    desc: "毒素可叠 3 层，持续 4 秒。中毒敌人的治疗效果降低 50%，克制萨满阵容。",
+  },
+  flame: {
+    name: "熔芯喷火塔",
+    en: "FLAMETHROWER",
+    cost: 150,
+    range: 120,
+    damage: 10,
+    interval: 0.22,
+    color: "#f4a26b",
+    role: "锥形 · 灼烧",
+    desc: "向前方扇区持续喷火，命中多个敌人并附加燃烧。射程短，适合转角密集布防。",
+  },
+  ballista: {
+    name: "穿甲重弩",
+    en: "BALLISTA",
+    cost: 200,
+    range: 245,
+    damage: 90,
+    interval: 2.1,
+    color: "#e6c18e",
+    role: "贯穿 · 远射",
+    desc: "超远距离重弩，穿透同一直线上的 2 个敌人，忽略一半护甲。射速慢，适合长直道。",
+  },
+  beacon: {
+    name: "辉光增幅塔",
+    en: "BEACON",
+    cost: 160,
+    range: 155,
+    damage: 0,
+    interval: 1,
+    color: "#f3d780",
+    role: "光环 · 辅助",
+    desc: "不直接攻击。范围内友塔伤害 +20%、射速 +15%。同类光环取最高值，不重复叠加。",
+  },
+});
 export const ENEMIES = {
   slime: {
     name: "森林史莱姆",
@@ -168,6 +215,54 @@ export const SPECIALIZATIONS = {
     { id: "overload", name: "雷霆过载", desc: "首个目标伤害 +100%", cost: 220 },
   ],
 };
+Object.assign(SPECIALIZATIONS, {
+  venom: [
+    {
+      id: "plague",
+      name: "瘟疫扩散",
+      desc: "毒弹影响目标周围 70 范围",
+      cost: 175,
+    },
+    {
+      id: "toxin",
+      name: "剧毒萃取",
+      desc: "毒素上限 5 层，持续 6 秒",
+      cost: 185,
+    },
+  ],
+  flame: [
+    {
+      id: "firestorm",
+      name: "灼热风暴",
+      desc: "射程 +40，喷火角度扩大",
+      cost: 210,
+    },
+    {
+      id: "molten",
+      name: "熔核喷流",
+      desc: "伤害 +60%，燃烧延长至 3 秒",
+      cost: 225,
+    },
+  ],
+  ballista: [
+    {
+      id: "rail",
+      name: "贯穿弩阵",
+      desc: "贯穿 4 个敌人，射程 +45",
+      cost: 240,
+    },
+    { id: "giant", name: "巨兽猎手", desc: "对巨像造成双倍伤害", cost: 230 },
+  ],
+  beacon: [
+    { id: "wide", name: "守望灯塔", desc: "光环半径 +70", cost: 190 },
+    {
+      id: "warbanner",
+      name: "战争号角",
+      desc: "光环额外增加 15% 伤害",
+      cost: 215,
+    },
+  ],
+});
 export const DIFFICULTIES = {
   casual: { name: "休闲", hp: 0.8, lives: 25, desc: "更从容的森林之旅" },
   normal: { name: "标准", hp: 1, lives: 20, desc: "策略与挑战恰到好处" },
@@ -296,11 +391,16 @@ export const SPELLS = {
     color: "#9bcd8f",
   },
 };
-export function wavePlan(wave) {
-  const groups = WAVES[wave - 1]?.groups || [];
-  const result = [];
-  const bosses = [];
-  const max = Math.max(0, ...groups.map(([, count]) => count));
+export function levelWave(wave, level = "forest") {
+  const stage = getLevel(level);
+  return WAVES[stage.waveOrder[wave - 1]] || WAVES[stage.waveOrder.at(-1)];
+}
+export function wavePlan(wave, level) {
+  const groups =
+    (level ? levelWave(wave, level) : WAVES[wave - 1])?.groups || [];
+  const result = [],
+    bosses = [],
+    max = Math.max(0, ...groups.map(([, count]) => count));
   for (let i = 0; i < max; i++)
     for (const [type, count] of groups)
       if (i < count) (type === "boss" ? bosses : result).push(type);

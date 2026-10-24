@@ -45,7 +45,10 @@ export default function Workshop({ state, onChoose, onCodex }) {
   const tower = g.towers.find((t) => t.id === selected),
     type = tower?.type || build || "arrow",
     def = TYPES[type],
-    stats = tower ? towerStats(tower) : def,
+    stats = towerStats(
+      tower || { type, damageLevel: 0, speedLevel: 0, specialization: null },
+      g,
+    ),
     ended = ["won", "lost"].includes(g.phase);
   const level = tower ? tower.damageLevel + tower.speedLevel : 0;
   const specialization =
@@ -61,7 +64,7 @@ export default function Workshop({ state, onChoose, onCodex }) {
     <aside className="workshop">
       <div className="workshop-title">
         <Swords size={21} />
-        <h2>防御工坊</h2>
+        <h2>塔楼工坊</h2>
         <span>THE WORKSHOP</span>
       </div>
       <div className="tower-list">
@@ -109,26 +112,58 @@ export default function Workshop({ state, onChoose, onCodex }) {
           </span>
         </div>
         <p className="tower-description">{def.desc}</p>
+        {["venom", "flame", "ballista", "beacon"].includes(type) && (
+          <div className="mechanic-note">
+            {type === "venom"
+              ? `每层毒素 ${(stats.damage * 0.65).toFixed(1)} 伤害/秒 · ${tower?.specialization === "toxin" ? 5 : 3} 层上限 · 抑疗 50%`
+              : type === "flame"
+                ? `扇区喷火 · 基础直伤 ${Math.round(stats.damage / stats.interval)}/秒 · 额外燃烧`
+                : type === "ballista"
+                  ? `贯穿 ${tower?.specialization === "rail" ? 4 : 2} 个目标 · 忽略 50% 护甲`
+                  : tower
+                    ? `当前覆盖 ${g.towers.filter((t) => t.id !== tower.id && t.type !== "beacon" && Math.hypot(t.x - tower.x, t.y - tower.y) <= stats.range).length} 座攻击塔 · 光环取最高值`
+                    : "放在攻击塔附近 · 同类光环取最高值"}
+          </div>
+        )}
         <div className="stat-trio">
           <span>
             <Swords size={13} />
-            伤害<b>{Math.round(stats.damage)}</b>
+            {type === "beacon" ? "增伤" : "伤害"}
+            <b>
+              {type === "beacon"
+                ? `+${Math.round(stats.auraDamage * 100)}%`
+                : Math.round(stats.damage)}
+            </b>
           </span>
           <span>
             <Target size={13} />
-            射程<b>{(stats.range / 50).toFixed(1)} 格</b>
+            {type === "beacon" ? "光环" : "射程"}
+            <b>{(stats.range / 50).toFixed(1)} 格</b>
           </span>
           <span>
             <Timer size={13} />
-            间隔<b>{stats.interval.toFixed(2)}s</b>
+            {type === "beacon" ? "攻速" : "间隔"}
+            <b>
+              {type === "beacon"
+                ? `+${Math.round(stats.auraRate * 100)}%`
+                : stats.interval.toFixed(2) + "s"}
+            </b>
           </span>
         </div>
         {tower ? (
           <>
             <div className="upgrade-grid">
               {[
-                ["damage", "伤害强化", Flame],
-                ["speed", "射速强化", TrendingUp],
+                [
+                  "damage",
+                  tower?.type === "beacon" ? "伤害光环" : "伤害强化",
+                  Flame,
+                ],
+                [
+                  "speed",
+                  tower?.type === "beacon" ? "射速光环" : "射速强化",
+                  TrendingUp,
+                ],
               ].map(([kind, label, Icon]) => (
                 <button
                   key={kind}
@@ -144,7 +179,13 @@ export default function Workshop({ state, onChoose, onCodex }) {
                     {label}
                     <small>
                       {tower[kind + "Level"]}/3 级 <i>→</i>{" "}
-                      {kind === "damage" ? "+42% 伤害" : "+25% 射速"}
+                      {type === "beacon"
+                        ? kind === "damage"
+                          ? "+8% 增幅"
+                          : "+6% 射速"
+                        : kind === "damage"
+                          ? "+42% 伤害"
+                          : "+25% 射速"}
                     </small>
                   </span>
                   <b>
@@ -161,11 +202,16 @@ export default function Workshop({ state, onChoose, onCodex }) {
               ))}
             </div>
             <div className="priority">
-              <label>攻击优先级</label>
+              <label>
+                {type === "beacon"
+                  ? "光环自动生效 · 同类取最高值"
+                  : "攻击优先级"}
+              </label>
               <div role="group" aria-label="攻击优先级">
                 {priorities.map(([id, label]) => (
                   <button
                     key={id}
+                    disabled={type === "beacon"}
                     className={tower.priority === id ? "active" : ""}
                     aria-pressed={tower.priority === id}
                     onClick={() => {
@@ -249,7 +295,7 @@ export default function Workshop({ state, onChoose, onCodex }) {
           <div className="build-instruction">
             <MousePointer2 size={17} />
             <p>
-              点击草地上的标记建造
+              点击空地上的标记建造
               <small>选中防御塔后，可升级、专精和更改目标</small>
             </p>
             <ChevronRight size={14} />

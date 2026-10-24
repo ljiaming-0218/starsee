@@ -1,3 +1,5 @@
+import { LEVELS, levelWaveCount, getLevel } from "../levels.js";
+import StageRail from "./StageRail.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import {
   X,
@@ -19,7 +21,7 @@ import {
   SPECIALIZATIONS,
 } from "../content.js";
 import { EnemyArt } from "./Art.jsx";
-export default function Dialogs({ state }) {
+export default function Dialogs({ state, onChooseLevel }) {
   const { modal, setModal, g, reset, muted, toggleSound, records } = state,
     [difficulty, setDifficulty] = useState(g.difficulty),
     ref = useRef(null),
@@ -59,13 +61,17 @@ export default function Dialogs({ state }) {
   }, [modal, setModal]);
   if (!modal) return null;
   const title =
-    modal === "codex"
-      ? "知己知彼，守住森林。"
-      : modal === "restart"
-        ? "开启新的守望？"
-        : modal === "settings"
-          ? "战役设置"
-          : "每一座塔，都有它的使命。";
+    modal === "switch"
+      ? `进入${getLevel(state.requestedLevel).name}？`
+      : modal === "levels"
+        ? "选择你的下一段冒险"
+        : modal === "codex"
+          ? "知己知彼，守住防线。"
+          : modal === "restart"
+            ? "开启新的守望？"
+            : modal === "settings"
+              ? "战役设置"
+              : "每一座塔，都有它的使命。";
   return (
     <div className="modal-backdrop" onClick={() => setModal(null)}>
       <section
@@ -88,7 +94,40 @@ export default function Dialogs({ state }) {
           {modal === "codex" ? <BookOpen size={28} /> : <Trees size={30} />}
         </span>
         <h2 id="dialog-title">{title}</h2>
-        {modal === "codex" ? (
+        {modal === "switch" ? (
+          <>
+            <p className="dialog-description">
+              切换会重置当前关卡的金币、布阵与波次。已经获得的星级和战绩会保留。
+            </p>
+            <div className="level-switch-preview">
+              <img src={getLevel(state.requestedLevel).image} alt="" />
+              <h3>{getLevel(state.requestedLevel).name}</h3>
+              <p>{getLevel(state.requestedLevel).description}</p>
+            </div>
+            <button
+              className="gold-button"
+              onClick={() => reset(g.difficulty, state.requestedLevel)}
+            >
+              确认进入{getLevel(state.requestedLevel).name}
+            </button>
+            <button className="quiet-button" onClick={() => setModal(null)}>
+              继续当前关卡
+            </button>
+          </>
+        ) : modal === "levels" ? (
+          <>
+            <p className="dialog-description">
+              三条不同的路线，三种布防思路。所有关卡均可直接挑战，星级独立保存。
+            </p>
+            <StageRail
+              state={state}
+              onChoose={(id) => {
+                if (id === g.level) setModal(null);
+                else onChooseLevel(id);
+              }}
+            />
+          </>
+        ) : modal === "codex" ? (
           <>
             <p className="dialog-description">
               敌人的抗性与能力不同。混合搭配，才能守到最后。
@@ -168,16 +207,17 @@ export default function Dialogs({ state }) {
         ) : (
           <>
             <p className="dialog-description">
-              12 波入侵，4 类防御塔。守住城堡，留下森林的绿意。
+              3 张地图、8 类防御塔、16 种专精。林道 8 波、峡谷 10 波、要塞 12
+              波。每关独立布阵、计分和评级。
             </p>
             <ol className="help-steps">
               <li>
                 <b>先构筑，再开波</b>
-                从工坊选择防御塔，在草地上的标记建造。圆圈显示射程；道路、森林和地标不可建造。
+                从工坊选择防御塔，在空地上的标记建造。圆圈显示射程；道路、森林和地标不可建造。
               </li>
               <li>
                 <b>选择合适的克制</b>
-                箭塔快速单体，炮塔范围破甲，冰塔减速，雷塔连锁。重甲怕魔法，游魂怕物理；萨满会治疗。
+                箭塔单体、炮塔溅射、冰塔减速、雷塔连锁。新增毒沼抑疗、喷火清群、重弩贯穿、灯塔增幅。重甲怕魔法，游魂怕物理。
               </li>
               <li>
                 <b>升级，更要专精</b>伤害与射速各可升级 3 次，累计升级 4
@@ -189,10 +229,10 @@ export default function Dialogs({ state }) {
               </li>
             </ol>
             <p className="help-keyboard">
-              1–4 选塔 · Q / W 秘术 · Space 开波或暂停 · Esc 取消
+              1–8 选塔 · Q / W 秘术 · Space 开波或暂停 · Esc 取消
               <br />
               战场支持方向键移动格位，Enter
-              建造或释放技能。关闭页面前会自动存档。
+              建造或释放技能。关闭页面前会自动存档。通过顶部或底部章节卡切换关卡；通关后可继续下一关。
             </p>
             <button className="gold-button" onClick={() => setModal(null)}>
               <Play size={16} />

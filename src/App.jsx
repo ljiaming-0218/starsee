@@ -1,6 +1,8 @@
+import { LEVELS, LEVEL_IDS, getLevel } from "./levels.js";
+import StageRail from "./components/StageRail.jsx";
 import React, { useEffect, useRef } from "react";
 import { Trees, RotateCcw } from "lucide-react";
-import { TYPES, WAVES } from "./content.js";
+import { TYPES, levelWave } from "./content.js";
 import { useGame } from "./useGame.js";
 import { startWave, placeTower, canPlace, castSpell } from "./game.js";
 import Workshop from "./components/Workshop.jsx";
@@ -29,11 +31,27 @@ export default function App() {
     } = state;
   const root = useRef(null),
     [fullscreen, setFullscreen] = React.useState(false);
+  function chooseLevel(id) {
+    if (!LEVELS[id] || game.current.level === id) return;
+    if (
+      (game.current.wave > 0 || game.current.towers.length > 0) &&
+      !["won", "lost"].includes(game.current.phase)
+    ) {
+      state.setRequestedLevel(id);
+      setModal("switch");
+    } else state.reset(game.current.difficulty, id);
+  }
+  function nextLevel() {
+    const i = LEVEL_IDS.indexOf(game.current.level);
+    if (i < LEVEL_IDS.length - 1)
+      state.reset(game.current.difficulty, LEVEL_IDS[i + 1]);
+    else setModal("levels");
+  }
   function choose(type) {
     setSpell(null);
     setSelected(null);
     setBuild(type);
-    setNotice(`正在部署${TYPES[type].name}。点击草地标记建造，Esc 取消。`);
+    setNotice(`正在部署${TYPES[type].name}。点击空地标记建造，Esc 取消。`);
     sound("click");
     if (window.innerWidth <= 760)
       requestAnimationFrame(() =>
@@ -41,10 +59,11 @@ export default function App() {
       );
   }
   function launch() {
+    if (state.assets !== "ready") return;
     if (startWave(game.current)) {
       setPaused(false);
       setSpell(null);
-      setNotice(WAVES[game.current.wave - 1].tip);
+      setNotice(levelWave(game.current.wave, game.current.level).tip);
       sound("click");
       refresh();
     }
@@ -95,7 +114,7 @@ export default function App() {
       return;
     }
     if (!canPlace(current, point.x, point.y)) {
-      setNotice("请在草地标记处建造，避开道路、森林、地标及其他防御塔。");
+      setNotice("请在空地标记处建造，避开道路、森林、地标及其他防御塔。");
       return;
     }
     const tower = placeTower(current, v.build, point.x, point.y);
@@ -136,7 +155,7 @@ export default function App() {
         if (game.current.phase === "ready") actions.current.launch();
         else if (game.current.phase === "battle") setPaused((p) => !p);
       }
-      if (["1", "2", "3", "4"].includes(e.key))
+      if (["1", "2", "3", "4", "5", "6", "7", "8"].includes(e.key))
         actions.current.choose(Object.keys(TYPES)[Number(e.key) - 1]);
       if (e.key.toLowerCase() === "q") actions.current.useSpell("meteor");
       if (e.key.toLowerCase() === "w") actions.current.useSpell("heal");
@@ -162,10 +181,16 @@ export default function App() {
         state={state}
         fullscreen={fullscreen}
         onFullscreen={toggleFullscreen}
+        onChooseLevel={chooseLevel}
       />
       <main className="game-grid">
         <section className="battle-section">
-          <Battlefield state={state} onPoint={point} onPlace={place} />
+          <Battlefield
+            state={state}
+            onPoint={point}
+            onPlace={place}
+            onNext={nextLevel}
+          />
           <BattleControls
             state={state}
             onLaunch={launch}
@@ -179,24 +204,25 @@ export default function App() {
           onCodex={() => setModal("codex")}
         />
       </main>
+      <StageRail state={state} onChoose={chooseLevel} />
       <footer className="game-footer">
         <span>
           <Trees size={13} />
-          为每一寸绿意而战。
+          守住每一段旅程。
         </span>
         <span>
           {saveStatus}
           <i />
           最高得分 {records.bestScore.toLocaleString()}
           <i />
-          EVERGREEN · CHAPTER I
+          EVERGREEN · PIXEL CAMPAIGN
         </span>
         <button onClick={() => setModal("restart")}>
           <RotateCcw size={11} />
           新战役
         </button>
       </footer>
-      <Dialogs state={state} />
+      <Dialogs state={state} onChooseLevel={chooseLevel} />
     </div>
   );
 }

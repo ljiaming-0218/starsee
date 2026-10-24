@@ -11,7 +11,8 @@ import {
   Maximize,
   Minimize,
 } from "lucide-react";
-import { TOTAL_WAVES } from "../content.js";
+import { getLevel, levelWaveCount } from "../levels.js";
+import StageRail from "./StageRail.jsx";
 function HudStat({ Icon, label, value, className = "" }) {
   return (
     <div className={`hud-stat ${className}`}>
@@ -23,24 +24,23 @@ function HudStat({ Icon, label, value, className = "" }) {
     </div>
   );
 }
-export default function GameHeader({ state, fullscreen, onFullscreen }) {
+export default function GameHeader({
+  state,
+  fullscreen,
+  onFullscreen,
+  onChooseLevel,
+}) {
   const { g, setModal, muted, toggleSound } = state;
   return (
     <header className="game-header">
       <a className="brand" href="/" aria-label="Evergreen 林间守卫">
-        <Trees size={40} strokeWidth={1.25} />
+        <img src="/favicon.svg" alt="" width="36" height="36" />
         <span>
-          <b>EVERGREEN</b>
-          <small>—— 林 间 守 卫 ——</small>
+          <h1>EVERGREEN</h1>
+          <small>— 像 素 守 卫 —</small>
         </span>
       </a>
-      <div className="campaign-title">
-        <h1>翡翠林地</h1>
-        <p>
-          第{g.wave > 8 ? "三" : g.wave > 4 ? "二" : "一"}章 ·{" "}
-          {g.wave > 8 ? "最后的守望" : g.wave > 4 ? "暗潮涌动" : "被遗忘的林间"}
-        </p>
-      </div>
+      <StageRail state={state} onChoose={onChooseLevel} compact />
       <div className="hud">
         <HudStat
           Icon={Heart}
@@ -65,7 +65,7 @@ export default function GameHeader({ state, fullscreen, onFullscreen }) {
           value={
             <>
               {String(Math.max(1, g.wave)).padStart(2, "0")}
-              <small> / {TOTAL_WAVES}</small>
+              <small> / {levelWaveCount(g.level)}</small>
             </>
           }
         />

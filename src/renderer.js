@@ -1,89 +1,84 @@
+import { LEVELS, getLevel } from "./levels.js";
 import { TYPES, ENEMIES } from "./content.js";
-import { canPlace, towerStats, PATH } from "./game.js";
-export function loadArt() {
-  const urls = {
-    terrain: "/art/battlefield.png",
-    sprites: "/art/sprites.png",
-    enemies: "/art/enemies.png",
-    storm: "/art/storm.png",
+import { canPlace, towerStats } from "./game.js";
+export function loadArt(level = "forest") {
+  const art = { terrains: {}, mapPromises: {} };
+  function load(name, src) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      art[name] = image;
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("素材加载失败：" + name));
+      image.src = src;
+    });
+  }
+  art.loadLevel = (id) => {
+    if (art.mapPromises[id]) return art.mapPromises[id];
+    art.mapPromises[id] = new Promise((resolve, reject) => {
+      const image = new Image();
+      art.terrains[id] = image;
+      image.onload = () => resolve(image);
+      image.onerror = () => {
+        delete art.mapPromises[id];
+        reject(new Error("地图加载失败：" + getLevel(id).name));
+      };
+      image.src = getLevel(id).image;
+    });
+    return art.mapPromises[id];
   };
-  const art = {};
-  art.ready = Promise.all(
-    Object.entries(urls).map(
-      ([name, src]) =>
-        new Promise((resolve, reject) => {
-          const image = new Image();
-          art[name] = image;
-          image.onload = resolve;
-          image.onerror = () => reject(new Error("素材加载失败：" + name));
-          image.src = src;
-        }),
-    ),
-  );
+  art.ready = Promise.all([
+    load("towers", "/art/pixel-towers.png"),
+    load("enemies", "/art/pixel-enemies.png"),
+    art.loadLevel(level),
+  ]).then((images) => {
+    art.loaded = true;
+    return images;
+  });
   return art;
 }
-function paintImage(ctx, img, sx, sy, sw, sh, x, y, height) {
-  if (!img?.complete || !img.naturalWidth) return;
-  const w = (height * sw) / sh;
-  ctx.drawImage(img, sx, sy, sw, sh, x - w / 2, y - height + 14, w, height);
+function paintCell(ctx, img, index, cols, rows, x, y, size) {
+  if (!img?.naturalWidth) return;
+  const w = img.naturalWidth / cols,
+    h = img.naturalHeight / rows;
+  ctx.drawImage(
+    img,
+    (index % cols) * w,
+    Math.floor(index / cols) * h,
+    w,
+    h,
+    Math.round(x - size / 2),
+    Math.round(y - size + 14),
+    size,
+    size,
+  );
 }
-function towerSprite(ctx, art, t, height = 99) {
-  if (t.type === "storm")
-    return paintImage(
-      ctx,
-      art.storm,
-      0,
-      0,
-      art.storm.naturalWidth,
-      art.storm.naturalHeight,
-      t.x,
-      t.y,
-      height,
-    );
-  const img = art.sprites,
-    w = img.naturalWidth / 4,
-    index = ["arrow", "cannon", "frost"].indexOf(t.type);
-  paintImage(ctx, img, index * w, 0, w, img.naturalHeight, t.x, t.y, height);
+function towerSprite(ctx, art, t, height = 90) {
+  paintCell(
+    ctx,
+    art.towers,
+    Object.keys(TYPES).indexOf(t.type),
+    4,
+    2,
+    t.x,
+    t.y,
+    height,
+  );
 }
-const enemyRects = [
-  [0, 0.35, 0.175, 0.56],
-  [0.175, 0.28, 0.232, 0.63],
-  [0.407, 0.14, 0.135, 0.77],
-  [0.542, 0.13, 0.2, 0.78],
-  [0.742, 0.12, 0.258, 0.79],
-];
 function enemySprite(ctx, art, e) {
   const def = ENEMIES[e.type],
-    bob = Math.sin(e.distance * 0.14 + e.id) * (e.type === "wisp" ? 4 : 1.8);
-  if (e.type === "slime") {
-    const img = art.sprites,
-      w = img.naturalWidth / 4;
-    paintImage(
-      ctx,
-      img,
-      3 * w,
-      img.naturalHeight * 0.4,
-      w,
-      img.naturalHeight * 0.56,
-      e.x,
-      e.y + bob,
-      def.size,
+    bob = Math.round(
+      Math.sin(e.distance * 0.14 + e.id) * (e.type === "wisp" ? 4 : 1),
     );
-  } else {
-    const img = art.enemies,
-      [x, y, w, h] = enemyRects[def.sprite];
-    paintImage(
-      ctx,
-      img,
-      x * img.naturalWidth,
-      y * img.naturalHeight,
-      w * img.naturalWidth,
-      h * img.naturalHeight,
-      e.x,
-      e.y + bob,
-      def.size,
-    );
-  }
+  paintCell(
+    ctx,
+    art.enemies,
+    Object.keys(ENEMIES).indexOf(e.type),
+    3,
+    2,
+    e.x,
+    e.y + bob,
+    def.size + 10,
+  );
 }
 function circle(ctx, x, y, r, fill, stroke = null) {
   ctx.beginPath();
@@ -101,9 +96,33 @@ function renderEffect(ctx, e, time) {
   const t = 1 - e.life / e.max;
   ctx.save();
   ctx.globalAlpha = Math.min(1, e.life * 5);
-  if (e.type === "lightning") {
+  if (e.type === "flame") {
+    for (let i = 0; i < 20; i++) {
+      const a = e.angle + Math.sin(i * 2.4) * e.cone,
+        dist = e.radius * (0.15 + (i % 7) / 9);
+      ctx.fillStyle = i % 3 ? "#ff9a44" : "#ffe59a";
+      const size = 6 + (i % 3) * 3;
+      ctx.fillRect(
+        e.x + Math.cos(a) * dist - size / 2,
+        e.y + Math.sin(a) * dist - size / 2,
+        size,
+        size,
+      );
+    }
+  } else if (e.type === "poison") {
+    for (let i = 0; i < 9; i++) {
+      const a = i * 2.4;
+      ctx.fillStyle = i % 2 ? "#badf67" : "#789d3d";
+      ctx.fillRect(
+        e.x + Math.cos(a) * 30 * t,
+        e.y + Math.sin(a) * 22 * t,
+        6 * (1 - t),
+        6 * (1 - t),
+      );
+    }
+  } else if (e.type === "lightning") {
     ctx.shadowColor = "#b5a0ff";
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = 0;
     ctx.lineWidth = 3;
     ctx.strokeStyle = "#f0dcff";
     ctx.beginPath();
@@ -222,15 +241,11 @@ export function render(
   spell,
   reducedMotion = false,
 ) {
-  if (!art.terrain?.naturalWidth) return;
+  const terrain = art.terrains[g.level];
+  if (!terrain?.naturalWidth) return;
+  ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, 1000, 650);
-  ctx.drawImage(art.terrain, 0, 0, 1000, 650);
-  // Cinematic edge shading leaves the playable center and illustrated road unfiltered.
-  const edge = ctx.createRadialGradient(500, 300, 230, 500, 325, 660);
-  edge.addColorStop(0, "#071a0e00");
-  edge.addColorStop(1, "#03110f88");
-  ctx.fillStyle = edge;
-  ctx.fillRect(0, 0, 1000, 650);
+  ctx.drawImage(terrain, 0, 0, 1000, 650);
   const time = g.visualTime;
   if (!reducedMotion)
     for (let i = 0; i < 20; i++) {
@@ -249,10 +264,10 @@ export function render(
     circle(ctx, x, y, r, null, valid ? "#f1e5b9dd" : "#ed9a86dd");
     ctx.restore();
   };
-  if (sel) range(sel.x, sel.y, towerStats(sel).range);
+  if (sel) range(sel.x, sel.y, towerStats(sel, g).range);
   if (build && !spell) {
-    for (let y = 175; y <= 425; y += 50)
-      for (let x = 275; x <= 725; x += 50)
+    for (let y = 75; y <= 575; y += 50)
+      for (let x = 75; x <= 925; x += 50)
         if (canPlace(g, x, y)) {
           ctx.save();
           ctx.globalAlpha = hover?.x === x && hover?.y === y ? 0.9 : 0.4;
@@ -306,9 +321,12 @@ export function render(
       ctx.beginPath();
       ctx.ellipse(o.x, o.y + 9, 25, 10, 0, 0, 7);
       ctx.fill();
-      if (o.specialization) {
-        ctx.shadowColor = TYPES[o.type].color;
-        ctx.shadowBlur = 10;
+      if (o.type === "beacon") {
+        ctx.setLineDash([4, 5]);
+        circle(ctx, o.x, o.y, towerStats(o).range, null, "#ffe49a44");
+        ctx.setLineDash([]);
+      } else if (towerStats(o, g).buffed) {
+        circle(ctx, o.x, o.y + 11, 28, null, "#ffdf77bb");
       }
       towerSprite(
         ctx,
@@ -354,6 +372,7 @@ export function render(
       ctx.fillRect(o.x - width / 2, y, width * Math.max(0, o.hp / o.maxHp), 3);
       if (o.slow > 0) circle(ctx, o.x - 12, y - 6, 2, "#8ce7ff");
       if (o.burn > 0) circle(ctx, o.x, y - 6, 2, "#ffae6e");
+      if (o.poison > 0) circle(ctx, o.x + 16, y - 6, 2, "#b9e56a");
       if (o.vulnerable > 0) circle(ctx, o.x + 10, y - 6, 2, "#e4b4ff");
     }
     ctx.restore();
@@ -368,9 +387,9 @@ export function render(
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(Math.atan2(s.ty - s.y, s.tx - s.x));
-    if (s.type === "arrow") {
+    if (s.type === "arrow" || s.type === "ballista") {
+      ctx.lineWidth = s.type === "ballista" ? 4 : 1.8;
       ctx.strokeStyle = "#ffe0a0";
-      ctx.lineWidth = 1.8;
       ctx.beginPath();
       ctx.moveTo(-12, 0);
       ctx.lineTo(5, 0);
@@ -382,14 +401,18 @@ export function render(
       ctx.lineTo(1, 3);
       ctx.fill();
     } else {
-      ctx.shadowBlur = s.type === "frost" ? 14 : 9;
+      ctx.shadowBlur = 0;
       ctx.shadowColor = s.type === "frost" ? "#8ce7ff" : "#ffac63";
       circle(
         ctx,
         0,
         0,
         s.type === "cannon" ? 5 : 4,
-        s.type === "frost" ? "#d7ffff" : "#ffd293",
+        s.type === "frost"
+          ? "#d7ffff"
+          : s.type === "venom"
+            ? "#b5ef64"
+            : "#ffd293",
       );
     }
     ctx.restore();

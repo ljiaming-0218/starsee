@@ -51,6 +51,7 @@ export function useGame() {
     [spell, setSpell] = useState(null),
     [modal, setModal] = useState(null),
     [muted, setMuted] = useState(true),
+    [requestedLevel, setRequestedLevel] = useState(null),
     [notice, setNotice] = useState(
       initial.current.restored
         ? "已恢复上次战局，准备好后继续。"
@@ -72,7 +73,7 @@ export function useGame() {
     const reduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
-    art.current = loadArt();
+    art.current = loadArt(game.current.level);
     art.current.ready
       .then(() => {
         if (active) setAssets("ready");
@@ -87,7 +88,12 @@ export function useGame() {
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
       const v = view.current;
-      if (!v.paused && !v.modal && art.current.terrain.complete)
+      if (
+        !v.paused &&
+        !v.modal &&
+        art.current.loaded &&
+        art.current.terrains[game.current.level]?.naturalWidth
+      )
         tick(game.current, dt * v.speed);
       const shots = game.current.towers.reduce((n, t) => n + t.shots, 0);
       if (shots > lastShots) {
@@ -139,28 +145,32 @@ export function useGame() {
       frame = requestAnimationFrame(animate);
     };
     frame = requestAnimationFrame(animate);
-    const resize = () => {
-      if (!canvas.current) return;
-      const rect = canvas.current.getBoundingClientRect(),
-        ratio = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.current.width = Math.max(1, Math.round(rect.width * ratio));
-      canvas.current.height = Math.max(1, Math.round(rect.height * ratio));
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas.current);
-    resize();
+    canvas.current.width = 500;
+    canvas.current.height = 325;
     const save = () => persistGame(localStorageSafe(), game.current);
     window.addEventListener("pagehide", save);
     return () => {
       active = false;
-      observer.disconnect();
       cancelAnimationFrame(frame);
       window.removeEventListener("pagehide", save);
       audio.current.dispose();
     };
   }, []);
-  function reset(difficulty = game.current.difficulty) {
-    game.current = initialGame(difficulty);
+  function reset(
+    difficulty = game.current.difficulty,
+    level = game.current.level,
+  ) {
+    game.current = initialGame(difficulty, level);
+    hover.current = null;
+    setAssets("loading");
+    Promise.all([art.current.ready, art.current.loadLevel(level)])
+      .then(() => {
+        if (game.current.level === level) setAssets("ready");
+      })
+      .catch((e) => {
+        setAssets("error");
+        setAssetError(e.message);
+      });
     setPaused(false);
     setBuild("arrow");
     setSelected(null);
@@ -169,6 +179,10 @@ export function useGame() {
     setNotice("新的防线，新的希望。先布置防御塔，再开始波次。");
     persistGame(localStorageSafe(), game.current);
     refresh();
+    if (window.innerWidth <= 760)
+      requestAnimationFrame(() =>
+        canvas.current?.scrollIntoView({ block: "center", behavior: "smooth" }),
+      );
   }
   function toggleSound() {
     audio.current.enable(muted);
@@ -203,6 +217,8 @@ export function useGame() {
     setNotice,
     refresh,
     reset,
+    requestedLevel,
+    setRequestedLevel,
     sound: (type) => audio.current.play(type),
   };
 }

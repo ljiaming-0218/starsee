@@ -1,3 +1,4 @@
+import { levelWaveCount } from "../levels.js";
 import React from "react";
 import {
   Pause,
@@ -10,17 +11,18 @@ import {
   Crown,
   Check,
 } from "lucide-react";
-import { WAVES, SPELLS, TOTAL_WAVES } from "../content.js";
+import { levelWave, SPELLS } from "../content.js";
 import { waveCount } from "../game.js";
 import { EnemyArt, SpellArt } from "./Art.jsx";
 export default function BattleControls({ state, onLaunch, onSpell, onCodex }) {
   const { g, paused, setPaused, speed, setSpeed, spell, notice } = state;
+  const total = levelWaveCount(g.level);
   const battle = g.phase === "battle",
     ended = ["won", "lost"].includes(g.phase),
-    next = Math.min(g.wave - (battle ? 1 : 0), TOTAL_WAVES - 1),
-    wave = WAVES[next];
+    next = Math.min(g.wave - (battle ? 1 : 0), total - 1),
+    wave = levelWave(next + 1, g.level);
   const completed =
-    g.phase === "won" ? TOTAL_WAVES : Math.max(0, g.wave - (battle ? 1 : 0));
+    g.phase === "won" ? total : Math.max(0, g.wave - (battle ? 1 : 0));
   return (
     <>
       <div className="command-bar">
@@ -68,7 +70,7 @@ export default function BattleControls({ state, onLaunch, onSpell, onCodex }) {
         <button
           className="launch-button"
           onClick={onLaunch}
-          disabled={g.phase !== "ready"}
+          disabled={g.phase !== "ready" || state.assets !== "ready"}
         >
           <span>
             {battle ? (
@@ -88,7 +90,7 @@ export default function BattleControls({ state, onLaunch, onSpell, onCodex }) {
           </span>
           <small>
             {battle
-              ? `剩余 ${waveCount(g.wave) - g.spawned + g.enemies.length} 名敌人`
+              ? `剩余 ${waveCount(g.wave, g.level) - g.spawned + g.enemies.length} 名敌人`
               : ended
                 ? "为森林而战"
                 : "完成奖励"}
@@ -151,17 +153,19 @@ export default function BattleControls({ state, onLaunch, onSpell, onCodex }) {
           <div>
             <h3>守望进度</h3>
             <span>
-              {String(completed).padStart(2, "0")} / {TOTAL_WAVES}
+              {String(completed).padStart(2, "0")} / {total}
             </span>
           </div>
           <ol aria-label="波次进度">
-            {Array.from({ length: TOTAL_WAVES }, (_, i) => (
+            {Array.from({ length: total }, (_, i) => (
               <li
                 className={`${i < completed ? "completed" : ""} ${i === completed && !ended ? "current" : ""}`}
                 key={i}
-                title={`第 ${i + 1} 波：${WAVES[i].name}`}
+                title={`第 ${i + 1} 波：${levelWave(i + 1, g.level).name}`}
               >
-                {(i + 1) % 4 === 0 && <Crown size={10} />}
+                {levelWave(i + 1, g.level).groups.some(
+                  ([type]) => type === "boss",
+                ) && <Crown size={10} />}
                 <span>{i < completed ? <Check size={12} /> : i + 1}</span>
               </li>
             ))}
@@ -173,7 +177,7 @@ export default function BattleControls({ state, onLaunch, onSpell, onCodex }) {
         <Info size={13} />
         <span>{notice}</span>
         <span className="keyboard-hints">
-          <kbd>1–4</kbd>选塔 <kbd>Q / W</kbd>秘术 <kbd>Space</kbd>开波 / 暂停{" "}
+          <kbd>1–8</kbd>选塔 <kbd>Q / W</kbd>秘术 <kbd>Space</kbd>开波 / 暂停{" "}
           <kbd>Esc</kbd>取消
         </span>
       </div>
