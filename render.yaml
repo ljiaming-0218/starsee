@@ -3,7 +3,7 @@ services:
     name: starsee
     runtime: static
     branch: main
-    buildCommand: npm ci --no-audit --no-fund && npm run build
+    buildCommand: npm ci --no-audit --no-fund && npm test && npm run build
     staticPublishPath: ./dist
     envVars:
       - key: NODE_VERSION
