@@ -31,3 +31,15 @@ npm run dev
 - `public/art/`：为本游戏生成的地图与透明精灵素材。
 
 游戏状态保存在当前页面内；刷新页面会重新开始。
+
+## 部署到 Render
+
+仓库根目录提供 `render.yaml` Blueprint，用于创建静态站点：
+
+- 分支：`main`
+- 构建命令：`npm ci --no-audit --no-fund && npm run build`
+- 发布目录：`dist`
+- Node.js：`24.19.0`
+- 无需应用密钥、数据库或后端服务。
+
+在 Render 中选择 **New → Blueprint** 并连接此 GitHub 仓库，确认静态站点配置后部署。后续 `main` 的提交由 Render 按服务的自动部署设置构建发布。
