@@ -27,8 +27,8 @@ export function loadArt(level = "forest") {
     return art.mapPromises[id];
   };
   art.ready = Promise.all([
-    load("towers", "/art/pixel-towers.png"),
-    load("enemies", "/art/pixel-enemies.png"),
+    load("towers", "/art/cozy-towers.png"),
+    load("enemies", "/art/dread-enemies.png"),
     art.loadLevel(level),
   ]).then((images) => {
     art.loaded = true;
@@ -57,7 +57,7 @@ function towerSprite(ctx, art, t, height = 90) {
     ctx,
     art.towers,
     Object.keys(TYPES).indexOf(t.type),
-    4,
+    5,
     2,
     t.x,
     t.y,
@@ -96,7 +96,42 @@ function renderEffect(ctx, e, time) {
   const t = 1 - e.life / e.max;
   ctx.save();
   ctx.globalAlpha = Math.min(1, e.life * 5);
-  if (e.type === "flame") {
+  if (["mend", "guard", "raid"].includes(e.type)) {
+    const color =
+      e.type === "mend"
+        ? "#9bffd0"
+        : e.type === "guard"
+          ? "#9bdfff"
+          : "#ff7689";
+    ctx.strokeStyle = color;
+    ctx.lineWidth = e.heavy ? 5 : 2.5;
+    ctx.setLineDash(e.type === "mend" ? [4, 5] : []);
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y);
+    ctx.lineTo(e.tx, e.ty);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (e.type === "mend") {
+      ctx.fillStyle = color;
+      ctx.fillRect(e.tx - 8, e.ty - 2 - t * 18, 16, 4);
+      ctx.fillRect(e.tx - 2, e.ty - 8 - t * 18, 4, 16);
+    } else circle(ctx, e.tx, e.ty, 5 + t * 15, null, color);
+  } else if (e.type === "repair") {
+    ctx.fillStyle = "#a2ffd2";
+    ctx.fillRect(e.x - 12, e.y - 3 - t * 30, 24, 6);
+    ctx.fillRect(e.x - 3, e.y - 12 - t * 30, 6, 24);
+  } else if (e.type === "collapse") {
+    for (let i = 0; i < 14; i++) {
+      const angle = i * 2.4;
+      ctx.fillStyle = i % 2 ? "#6f7374" : e.color;
+      ctx.fillRect(
+        e.x + Math.cos(angle) * t * 45,
+        e.y + Math.sin(angle) * t * 20 - Math.sin(t * Math.PI) * 25,
+        5 + (i % 5),
+        5 + (i % 4),
+      );
+    }
+  } else if (e.type === "flame") {
     for (let i = 0; i < 20; i++) {
       const a = e.angle + Math.sin(i * 2.4) * e.cone,
         dist = e.radius * (0.15 + (i % 7) / 9);
@@ -265,6 +300,22 @@ export function render(
     ctx.restore();
   };
   if (sel) range(sel.x, sel.y, towerStats(sel, g).range);
+  for (const b of g.towers)
+    if (b.type === "beacon") {
+      const stats = towerStats(b);
+      for (const t of g.towers)
+        if (t.id !== b.id && Math.hypot(t.x - b.x, t.y - b.y) <= stats.range) {
+          ctx.save();
+          ctx.strokeStyle = "#ffdb8644";
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 7]);
+          ctx.beginPath();
+          ctx.moveTo(b.x, b.y);
+          ctx.lineTo(t.x, t.y);
+          ctx.stroke();
+          ctx.restore();
+        }
+    }
   if (build && !spell) {
     for (let y = 75; y <= 575; y += 50)
       for (let x = 75; x <= 925; x += 50)
@@ -328,12 +379,26 @@ export function render(
       } else if (towerStats(o, g).buffed) {
         circle(ctx, o.x, o.y + 11, 28, null, "#ffdf77bb");
       }
+      if (o.hit > 0) ctx.filter = "brightness(1.65) sepia(.6)";
+      else if (o.hp < o.maxHp * 0.35) ctx.filter = "brightness(.7)";
       towerSprite(
         ctx,
         art,
         o,
-        99 + (o.recoil > 0 ? -Math.sin(o.recoil * 15) * 3 : 0),
+        105 + (o.recoil > 0 ? -Math.sin(o.recoil * 15) * 3 : 0),
       );
+      ctx.filter = "none";
+      const healthY = o.y - 98;
+      ctx.fillStyle = "#071b29";
+      ctx.fillRect(o.x - 25, healthY - 1, 50, 7);
+      ctx.fillStyle = o.hp < o.maxHp * 0.35 ? "#ff7e91" : "#9bffd0";
+      ctx.fillRect(o.x - 23, healthY + 1, 46 * Math.max(0, o.hp / o.maxHp), 3);
+      if (o.hp < o.maxHp * 0.35) {
+        ctx.fillStyle = "#ffb5ba";
+        ctx.font = "bold 15px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("!", o.x + 32, healthY + 7);
+      }
       ctx.shadowBlur = 0;
       if (o.id === selected) {
         ctx.strokeStyle = "#eed594";
@@ -365,10 +430,10 @@ export function render(
       ctx.fillStyle = "#091813cc";
       ctx.fillRect(o.x - width / 2 - 1, y - 1, width + 2, 5);
       ctx.fillStyle = o.boss
-        ? "#e9a866"
+        ? "#f17c91"
         : o.type === "armored"
           ? "#babec1"
-          : "#b5cc8a";
+          : "#dd819b";
       ctx.fillRect(o.x - width / 2, y, width * Math.max(0, o.hp / o.maxHp), 3);
       if (o.slow > 0) circle(ctx, o.x - 12, y - 6, 2, "#8ce7ff");
       if (o.burn > 0) circle(ctx, o.x, y - 6, 2, "#ffae6e");

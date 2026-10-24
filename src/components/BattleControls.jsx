@@ -177,7 +177,7 @@ export default function BattleControls({ state, onLaunch, onSpell, onCodex }) {
         <Info size={13} />
         <span>{notice}</span>
         <span className="keyboard-hints">
-          <kbd>1–8</kbd>选塔 <kbd>Q / W</kbd>秘术 <kbd>Space</kbd>开波 / 暂停{" "}
+          <kbd>1–0</kbd>选建筑 <kbd>Q / W</kbd>秘术 <kbd>Space</kbd>开波 / 暂停{" "}
           <kbd>Esc</kbd>取消
         </span>
       </div>

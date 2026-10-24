@@ -5,7 +5,7 @@ function AtlasArt({ kind, index, cols, rows, className = "" }) {
     <span aria-hidden="true" className={`${kind}-art ${className}`}>
       <svg viewBox={`${index % cols} ${Math.floor(index / cols)} 1 1`}>
         <image
-          href={`/art/pixel-${kind === "tower" ? "towers" : "enemies"}.png`}
+          href={`/art/${kind === "tower" ? "cozy-towers" : "dread-enemies"}.png`}
           width={cols}
           height={rows}
           preserveAspectRatio="none"
@@ -19,7 +19,7 @@ export function TowerArt({ type, className = "" }) {
     <AtlasArt
       kind="tower"
       index={Object.keys(TYPES).indexOf(type)}
-      cols={4}
+      cols={5}
       rows={2}
       className={className}
     />

@@ -3111,3 +3111,119 @@ kbd {
 .loading-overlay {
   z-index: 5;
 }
+/* Warm cottage survival: readable health, repair, and enemy raid feedback. */
+.durability {
+  margin: 12px 0;
+  padding: 10px;
+  border: 1px solid #547b7b;
+  background: #0e202d;
+}
+.durability > span {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  color: #b2e7cb;
+}
+.durability > span b {
+  margin-left: auto;
+  font-family: "DM Sans", sans-serif;
+  font-size: 12px;
+}
+.durability-track {
+  height: 7px;
+  margin-top: 9px;
+  background: #07151f;
+  padding: 1px;
+}
+.durability-track i {
+  display: block;
+  height: 100%;
+  background: #91e7ba;
+  transition: width 0.1s;
+}
+.durability.is-critical {
+  border-color: #e48090;
+}
+.durability.is-critical .durability-track i {
+  background: #ef8a9d;
+}
+.durability > small {
+  display: block;
+  color: #9bb4bf;
+  font-size: 10px;
+  margin-top: 7px;
+}
+.repair-button {
+  margin-top: 9px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  background: #24434d;
+  border: 1px solid #6e9a96;
+  color: #ddf4e7;
+  font-size: 11px;
+}
+.repair-button b {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #ffdc7e;
+}
+.raid-alert {
+  position: absolute;
+  z-index: 2;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 90%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #ffd5db;
+  background: #361f32ed;
+  border: 2px solid #da8190;
+  box-shadow: 3px 3px #06131ac0;
+  pointer-events: none;
+}
+.enemy-raid {
+  color: #f0b1bc !important;
+  margin-top: 7px !important;
+}
+@media (min-width: 761px) {
+  .tower-card .tower-art {
+    height: 64px;
+    width: 64px;
+  }
+  .tower-card {
+    min-height: 91px;
+  }
+}
+@media (max-width: 760px) {
+  .tower-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .tower-name strong {
+    font-size: 10px;
+  }
+  .tower-card {
+    min-height: 128px;
+  }
+  .tower-card .tower-art {
+    width: 68px;
+    height: 68px;
+  }
+  .raid-alert {
+    font-size: 8px;
+    bottom: 8px;
+    padding: 5px 7px;
+    border-width: 1px;
+  }
+}

@@ -33,11 +33,11 @@ export default function GameHeader({
   const { g, setModal, muted, toggleSound } = state;
   return (
     <header className="game-header">
-      <a className="brand" href="/" aria-label="Evergreen 林间守卫">
+      <a className="brand" href="/" aria-label="Evergreen 暖灯守卫">
         <img src="/favicon.svg" alt="" width="36" height="36" />
         <span>
           <h1>EVERGREEN</h1>
-          <small>— 像 素 守 卫 —</small>
+          <small>— 暖 灯 守 卫 —</small>
         </span>
       </a>
       <StageRail state={state} onChoose={onChooseLevel} compact />

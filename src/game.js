@@ -7,6 +7,7 @@ import {
   DIFFICULTIES,
   SPELLS,
   wavePlan,
+  isSupport,
 } from "./content.js";
 export { TYPES, TOTAL_WAVES } from "./content.js";
 export const WIDTH = 1000,
@@ -53,7 +54,7 @@ export function initialGame(difficulty = "normal", level = "forest") {
   if (!DIFFICULTIES[difficulty]) difficulty = "normal";
   const maxLives = DIFFICULTIES[difficulty].lives;
   return {
-    version: 3,
+    version: 4,
     level: getLevel(level).id,
     difficulty,
     maxLives,
@@ -79,6 +80,9 @@ export function initialGame(difficulty = "normal", level = "forest") {
     banner: "",
     bannerTime: 0,
     damageDealt: 0,
+    buildingsLost: 0,
+    raidAlert: "",
+    raidAlertTime: 0,
   };
 }
 export function waveCount(w, level) {
@@ -130,6 +134,11 @@ export function placeTower(g, type, x, y) {
     kills: 0,
     damageDealt: 0,
     recoil: 0,
+    hp: TYPES[type].hp,
+    maxHp: TYPES[type].hp,
+    hit: 0,
+    healingDone: 0,
+    damageAbsorbed: 0,
   };
   g.gold -= TYPES[type].cost;
   g.towers.push(t);
@@ -169,8 +178,19 @@ export function towerStats(t, g = null) {
       t.damageLevel * 0.08 +
       (t.specialization === "warbanner" ? 0.15 : 0),
     auraRate: 0.15 + t.speedLevel * 0.06,
+    healing:
+      d.damage *
+      Math.pow(1.42, t.damageLevel) *
+      (t.specialization === "sanctuary" ? 1.5 : 1),
+    maxHp:
+      d.hp +
+      (t.type === "bulwark" ? t.damageLevel * 180 : 0) +
+      (t.specialization === "bastion" ? 450 : 0),
+    selfHeal: t.specialization === "mending" ? 28 : 8,
   };
-  if (g && t.type !== "beacon") {
+  if (t.specialization === "sanctuary") stats.range += 55;
+  if (t.specialization === "bastion") stats.range += 45;
+  if (g && !isSupport(t.type)) {
     let damageBuff = 0,
       speedBuff = 0;
     for (const b of g.towers)
@@ -204,6 +224,9 @@ export function upgrade(g, id, kind) {
   g.gold -= cost;
   t.invested += cost;
   t[kind + "Level"]++;
+  const nextMax = towerStats(t).maxHp;
+  t.hp += nextMax - t.maxHp;
+  t.maxHp = nextMax;
   g.effects.push({ type: "build", x: t.x, y: t.y, life: 0.6, max: 0.6 });
   return true;
 }
@@ -221,12 +244,20 @@ export function specialize(g, id, spec) {
   g.gold -= s.cost;
   t.invested += s.cost;
   t.specialization = spec;
+  const nextMax = towerStats(t).maxHp;
+  t.hp += nextMax - t.maxHp;
+  t.maxHp = nextMax;
   g.effects.push({ type: "build", x: t.x, y: t.y, life: 1, max: 1 });
   return true;
 }
 export function setPriority(g, id, priority) {
   const t = g.towers.find((t) => t.id === id);
-  if (!t || !["first", "strong", "close"].includes(priority)) return false;
+  if (
+    !t ||
+    isSupport(t.type) ||
+    !["first", "strong", "close"].includes(priority)
+  )
+    return false;
   t.priority = priority;
   return true;
 }
@@ -250,6 +281,167 @@ export function selectTarget(t, enemies) {
         ? Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y)
         : b.distance - a.distance,
   )[0];
+}
+export function repairCost(t) {
+  return Math.ceil(Math.max(0, t.maxHp - t.hp) * 0.12);
+}
+export function repairTower(g, id) {
+  const t = g.towers.find((t) => t.id === id);
+  if (!t || t.hp <= 0 || t.hp >= t.maxHp || ["won", "lost"].includes(g.phase))
+    return false;
+  const cost = repairCost(t);
+  if (g.gold < cost) return false;
+  g.gold -= cost;
+  t.hp = t.maxHp;
+  g.effects.push({ type: "repair", x: t.x, y: t.y - 30, life: 0.7, max: 0.7 });
+  return true;
+}
+function healBuilding(g, source, target, amount) {
+  const healed = Math.min(target.maxHp - target.hp, amount);
+  if (healed <= 0 || target.hp <= 0) return;
+  target.hp += healed;
+  source.healingDone += healed;
+  g.effects.push({
+    type: "mend",
+    x: source.x,
+    y: source.y - 35,
+    tx: target.x,
+    ty: target.y - 30,
+    life: 0.5,
+    max: 0.5,
+  });
+}
+// A single closest shell guard shares a hit; redirected damage cannot recurse.
+export function damageBuilding(g, target, amount) {
+  if (
+    !target ||
+    target.hp <= 0 ||
+    !g.towers.includes(target) ||
+    !Number.isFinite(amount) ||
+    amount <= 0
+  )
+    return 0;
+  let damage = amount;
+  const lantern = g.towers.some(
+    (b) =>
+      b.hp > 0 &&
+      b.type === "beacon" &&
+      Math.hypot(b.x - target.x, b.y - target.y) <= towerStats(b).range,
+  );
+  if (lantern) damage *= 0.75;
+  const guard =
+    target.type !== "bulwark" &&
+    g.towers
+      .filter(
+        (b) =>
+          b.hp > 0 &&
+          b.type === "bulwark" &&
+          Math.hypot(b.x - target.x, b.y - target.y) <= towerStats(b).range,
+      )
+      .sort(
+        (a, b) =>
+          Math.hypot(a.x - target.x, a.y - target.y) -
+          Math.hypot(b.x - target.x, b.y - target.y),
+      )[0];
+  if (guard) {
+    const shared = Math.min(guard.hp, damage * 0.65);
+    guard.hp -= shared;
+    guard.damageAbsorbed += shared;
+    guard.hit = 0.25;
+    damage -= shared;
+    g.effects.push({
+      type: "guard",
+      x: guard.x,
+      y: guard.y - 25,
+      tx: target.x,
+      ty: target.y - 25,
+      life: 0.4,
+      max: 0.4,
+    });
+  }
+  const actual = Math.min(target.hp, damage);
+  target.hp -= actual;
+  target.hit = 0.25;
+  return actual;
+}
+function clearDestroyed(g) {
+  if (!g.towers.some((t) => t.hp <= 0)) return;
+  for (const t of g.towers)
+    if (t.hp <= 0) {
+      g.buildingsLost++;
+      g.raidAlert = `${TYPES[t.type].name}已损毁，可在原地重建`;
+      g.raidAlertTime = 4;
+      g.effects.push({
+        type: "collapse",
+        x: t.x,
+        y: t.y,
+        life: 1.3,
+        max: 1.3,
+        color: TYPES[t.type].color,
+      });
+    }
+  g.towers = g.towers.filter((t) => t.hp > 0);
+}
+function raid(g, e, dt) {
+  const def = ENEMIES[e.type];
+  e.attackCooldown = Math.max(0, e.attackCooldown - dt);
+  e.marchTimer = Math.max(0, e.marchTimer - dt);
+  if (e.marchTimer > 0) {
+    e.raidTarget = null;
+    return false;
+  }
+  const targets = g.towers.filter(
+    (t) => t.hp > 0 && Math.hypot(t.x - e.x, t.y - e.y) <= def.reach,
+  );
+  targets.sort((a, b) => {
+    if (
+      e.type === "armored" &&
+      (a.type === "bulwark") !== (b.type === "bulwark")
+    )
+      return a.type === "bulwark" ? -1 : 1;
+    return Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y);
+  });
+  const target = targets[0];
+  if (!target) {
+    e.raidTime = 0;
+    e.raidTarget = null;
+    return false;
+  }
+  e.raidTarget = target.id;
+  e.raidTime += dt;
+  if (e.attackCooldown <= 0) {
+    e.attackCooldown = def.attackInterval;
+    const damage =
+      def.attack *
+      (1 + (g.wave - 1) * 0.045) *
+      (g.difficulty === "veteran" ? 1.2 : g.difficulty === "casual" ? 0.75 : 1);
+    const victims = e.boss
+      ? g.towers.filter(
+          (t) => t.hp > 0 && Math.hypot(t.x - target.x, t.y - target.y) < 90,
+        )
+      : [target];
+    for (const t of victims) damageBuilding(g, t, damage);
+    g.effects.push({
+      type: "raid",
+      x: e.x,
+      y: e.y - 15,
+      tx: target.x,
+      ty: target.y - 30,
+      life: 0.45,
+      max: 0.45,
+      heavy: e.boss,
+    });
+    if (target.hp < target.maxHp * 0.35) {
+      g.raidAlert = `${TYPES[target.type].name}耐久告急，诊所或紧急维修可以救援`;
+      g.raidAlertTime = 3;
+    }
+  }
+  if (e.raidTime >= 2.4) {
+    e.raidTime = 0;
+    e.marchTimer = 5.5;
+    e.raidTarget = null;
+  }
+  return true;
 }
 export function makeEnemy(g, type, distance = 0) {
   const def = ENEMIES[type],
@@ -281,6 +473,10 @@ export function makeEnemy(g, type, distance = 0) {
     poisonDps: 0,
     poisonOwner: null,
     escaped: false,
+    attackCooldown: 0,
+    raidTime: 0,
+    marchTimer: 0,
+    raidTarget: null,
   };
 }
 export function damageEnemy(g, e, amount, type, owner = null) {
@@ -567,7 +763,9 @@ export function tick(g, dt) {
   }
   g.particles = g.particles.filter((p) => p.life > 0);
   g.bannerTime = Math.max(0, g.bannerTime - dt);
+  g.raidAlertTime = Math.max(0, g.raidAlertTime - dt);
   if (g.phase !== "battle") return;
+  for (const t of g.towers) t.hit = Math.max(0, t.hit - dt);
   g.time += dt;
   g.spawnTimer -= dt;
   for (const key of Object.keys(g.spellCooldowns))
@@ -601,8 +799,12 @@ export function tick(g, dt) {
       if (!e.poison) e.poisonStacks = 0;
     }
     if (e.hp <= 0) continue;
-    e.distance +=
-      e.speed * (e.slow > 0 ? 1 - e.slowStrength * (e.boss ? 0.5 : 1) : 1) * dt;
+    const attacking = raid(g, e, dt);
+    if (!attacking)
+      e.distance +=
+        e.speed *
+        (e.slow > 0 ? 1 - e.slowStrength * (e.boss ? 0.5 : 1) : 1) *
+        dt;
     Object.assign(e, positionAt(e.distance, g.level));
     if (e.distance >= levelPathLength(g.level)) {
       e.escaped = true;
@@ -616,6 +818,7 @@ export function tick(g, dt) {
       });
     }
   }
+  clearDestroyed(g);
   for (const shaman of g.enemies)
     if (shaman.type === "shaman" && shaman.hp > 0 && !shaman.escaped)
       for (const e of g.enemies)
@@ -633,6 +836,34 @@ export function tick(g, dt) {
     if (t.type === "beacon") continue;
     t.cooldown -= dt;
     t.recoil = Math.max(0, t.recoil - dt);
+    if (t.type === "medic") {
+      if (t.cooldown <= 0) {
+        const stats = towerStats(t),
+          targets = g.towers
+            .filter(
+              (b) =>
+                b.hp > 0 &&
+                b.hp < b.maxHp &&
+                Math.hypot(b.x - t.x, b.y - t.y) <= stats.range,
+            )
+            .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)
+            .slice(0, t.specialization === "triage" ? 2 : 1);
+        if (targets.length) {
+          for (const b of targets) healBuilding(g, t, b, stats.healing);
+          t.cooldown = stats.interval;
+          t.recoil = 0.2;
+        }
+      }
+      continue;
+    }
+    if (t.type === "bulwark") {
+      if (t.cooldown <= 0 && t.hp < t.maxHp) {
+        const stats = towerStats(t);
+        healBuilding(g, t, t, stats.selfHeal);
+        t.cooldown = stats.interval;
+      }
+      continue;
+    }
     const target = selectTarget(t, g.enemies);
     if (target && t.cooldown <= 0) attack(g, t, target);
   }

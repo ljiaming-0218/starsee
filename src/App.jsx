@@ -102,7 +102,7 @@ export default function App() {
       setSelected(existing.id);
       setBuild(null);
       setSpell(null);
-      setNotice("调整这座塔的升级、专精和目标优先级。");
+      setNotice("查看建筑耐久、维修、升级和支援范围。");
       return;
     }
     if (!v.build) {
@@ -155,8 +155,10 @@ export default function App() {
         if (game.current.phase === "ready") actions.current.launch();
         else if (game.current.phase === "battle") setPaused((p) => !p);
       }
-      if (["1", "2", "3", "4", "5", "6", "7", "8"].includes(e.key))
-        actions.current.choose(Object.keys(TYPES)[Number(e.key) - 1]);
+      if (["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].includes(e.key))
+        actions.current.choose(
+          Object.keys(TYPES)[e.key === "0" ? 9 : Number(e.key) - 1],
+        );
       if (e.key.toLowerCase() === "q") actions.current.useSpell("meteor");
       if (e.key.toLowerCase() === "w") actions.current.useSpell("heal");
     };
@@ -215,7 +217,7 @@ export default function App() {
           <i />
           最高得分 {records.bestScore.toLocaleString()}
           <i />
-          EVERGREEN · PIXEL CAMPAIGN
+          EVERGREEN · LANTERN DEFENSE
         </span>
         <button onClick={() => setModal("restart")}>
           <RotateCcw size={11} />

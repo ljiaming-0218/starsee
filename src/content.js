@@ -2,7 +2,7 @@ import { getLevel } from "./levels.js";
 export const TOTAL_WAVES = 12;
 export const TYPES = {
   arrow: {
-    name: "游侠箭塔",
+    name: "兔耳箭屋",
     en: "RANGER",
     cost: 80,
     range: 165,
@@ -13,7 +13,7 @@ export const TYPES = {
     desc: "射程远、出手快。优先清理疾行敌人；对重甲的伤害较低。",
   },
   cannon: {
-    name: "重装炮塔",
+    name: "茶壶炮坊",
     en: "BOMBARD",
     cost: 140,
     range: 145,
@@ -24,7 +24,7 @@ export const TYPES = {
     desc: "炮弹爆炸覆盖周围敌人，部分穿透护甲。狭窄路口的清场利器。",
   },
   frost: {
-    name: "冰霜法塔",
+    name: "雪帽冰屋",
     en: "FROSTKEEPER",
     cost: 120,
     range: 150,
@@ -35,7 +35,7 @@ export const TYPES = {
     desc: "冰霜无视护甲，使敌人减速 45%，为其他防御塔争取输出时间。",
   },
   storm: {
-    name: "雷电高塔",
+    name: "星星雷屋",
     en: "STORMCALLER",
     cost: 180,
     range: 155,
@@ -48,7 +48,7 @@ export const TYPES = {
 };
 Object.assign(TYPES, {
   venom: {
-    name: "毒沼炼金塔",
+    name: "蘑菇药坊",
     en: "VENOM",
     cost: 110,
     range: 150,
@@ -56,10 +56,10 @@ Object.assign(TYPES, {
     interval: 0.8,
     color: "#b4db65",
     role: "叠毒 · 抑疗",
-    desc: "毒素可叠 3 层，持续 4 秒。中毒敌人的治疗效果降低 50%，克制萨满阵容。",
+    desc: "毒素可叠 3 层，持续 4 秒。中毒敌人的治疗效果降低 50%，克制祭司阵容。",
   },
   flame: {
-    name: "熔芯喷火塔",
+    name: "小龙焙坊",
     en: "FLAMETHROWER",
     cost: 150,
     range: 120,
@@ -70,7 +70,7 @@ Object.assign(TYPES, {
     desc: "向前方扇区持续喷火，命中多个敌人并附加燃烧。射程短，适合转角密集布防。",
   },
   ballista: {
-    name: "穿甲重弩",
+    name: "刺猬弩屋",
     en: "BALLISTA",
     cost: 200,
     range: 245,
@@ -81,7 +81,7 @@ Object.assign(TYPES, {
     desc: "超远距离重弩，穿透同一直线上的 2 个敌人，忽略一半护甲。射速慢，适合长直道。",
   },
   beacon: {
-    name: "辉光增幅塔",
+    name: "暖灯小屋",
     en: "BEACON",
     cost: 160,
     range: 155,
@@ -89,13 +89,52 @@ Object.assign(TYPES, {
     interval: 1,
     color: "#f3d780",
     role: "光环 · 辅助",
-    desc: "不直接攻击。范围内友塔伤害 +20%、射速 +15%。同类光环取最高值，不重复叠加。",
+    desc: "不直接攻击。范围内友塔伤害 +20%、射速 +15%。并使范围内友塔受到的伤害降低 25%。同类光环取最高值。",
   },
 });
+Object.assign(TYPES, {
+  medic: {
+    name: "兔兔诊所",
+    en: "BUNNY CLINIC",
+    cost: 130,
+    range: 180,
+    damage: 24,
+    interval: 1.4,
+    color: "#f4b5cd",
+    role: "治疗 · 抢修",
+    desc: "不攻击怪物。每次修复范围内损伤比例最高的建筑 24 点耐久，可修复自身。已摧毁的建筑无法复活。",
+  },
+  bulwark: {
+    name: "龟壳堡",
+    en: "SHELL GUARD",
+    cost: 100,
+    range: 115,
+    damage: 0,
+    interval: 2,
+    color: "#96d8e7",
+    role: "护卫 · 分伤",
+    desc: "不直接攻击。替范围内友方建筑承担 65% 伤害，每 2 秒自愈 8 点。保护范围内优先由最近的龟壳堡承担。",
+  },
+});
+const durability = {
+  arrow: 300,
+  cannon: 400,
+  frost: 300,
+  storm: 320,
+  venom: 300,
+  flame: 420,
+  ballista: 340,
+  beacon: 320,
+  medic: 280,
+  bulwark: 780,
+};
+for (const [type, hp] of Object.entries(durability)) TYPES[type].hp = hp;
+export const SUPPORT_TYPES = ["beacon", "medic", "bulwark"];
+export const isSupport = (type) => SUPPORT_TYPES.includes(type);
 export const ENEMIES = {
   slime: {
-    name: "森林史莱姆",
-    short: "史莱姆",
+    name: "噬光黏怪",
+    short: "噬光怪",
     hp: 1,
     speed: 48,
     reward: 12,
@@ -107,8 +146,8 @@ export const ENEMIES = {
     desc: "数量众多的入侵先锋，容易被范围攻击清理。",
   },
   scout: {
-    name: "疾行哥布林",
-    short: "疾行者",
+    name: "裂面爪行者",
+    short: "爪行者",
     hp: 0.65,
     speed: 91,
     reward: 12,
@@ -120,8 +159,8 @@ export const ENEMIES = {
     desc: "移动速度很快。用箭塔点杀，或用冰霜限制行动。",
   },
   armored: {
-    name: "重甲圣甲虫",
-    short: "重甲虫",
+    name: "骨甲攻城兽",
+    short: "骨甲兽",
     hp: 2.1,
     speed: 36,
     reward: 24,
@@ -133,8 +172,8 @@ export const ENEMIES = {
     desc: "护甲减少 58% 箭矢伤害。炮击部分破甲，魔法完全无视护甲。",
   },
   wisp: {
-    name: "幽林游魂",
-    short: "游魂",
+    name: "缝影幽魂",
+    short: "幽魂",
     hp: 0.95,
     speed: 64,
     reward: 18,
@@ -146,8 +185,8 @@ export const ENEMIES = {
     desc: "抵抗 42% 魔法伤害。使用物理塔对抗；冰霜减速仍然有效。",
   },
   shaman: {
-    name: "苔林萨满",
-    short: "萨满",
+    name: "鹿骸祭司",
+    short: "祭司",
     hp: 1.5,
     speed: 42,
     reward: 28,
@@ -159,8 +198,8 @@ export const ENEMIES = {
     desc: "每秒回复周围同伴 1.6% 最大生命。优先击杀，避免战线拖长。",
   },
   boss: {
-    name: "远古岩石巨像",
-    short: "岩石巨像",
+    name: "裂颚灾像",
+    short: "裂颚灾像",
     hp: 11,
     speed: 28,
     reward: 150,
@@ -172,6 +211,20 @@ export const ENEMIES = {
     desc: "携带护甲、抵抗一半减速效果。漏过扣 5 点生命。合理使用陨火。",
   },
 };
+// Reach is measured from the road position to the building footprint.
+const raids = {
+  slime: [145, 9, 1.6, "近距离噬咬建筑"],
+  scout: [150, 8, 1.1, "快速挥爪，威胁前排"],
+  armored: [170, 24, 2.2, "重击建筑，优先攻击龟壳堡"],
+  wisp: [210, 16, 2.6, "远程影弹，能袭击后排"],
+  shaman: [180, 13, 3, "诅咒投射，同时治疗同伴"],
+  boss: [205, 52, 3.2, "重击波及目标周围 90 范围"],
+};
+for (const [type, [reach, attack, attackInterval, raid]] of Object.entries(
+  raids,
+)) {
+  Object.assign(ENEMIES[type], { reach, attack, attackInterval, raid });
+}
 export const SPECIALIZATIONS = {
   arrow: [
     { id: "sniper", name: "鹰眼神射", desc: "射程 +60，伤害 +45%", cost: 170 },
@@ -263,6 +316,36 @@ Object.assign(SPECIALIZATIONS, {
     },
   ],
 });
+Object.assign(SPECIALIZATIONS, {
+  medic: [
+    {
+      id: "triage",
+      name: "双兔急救",
+      desc: "每次治疗 2 座受损建筑",
+      cost: 170,
+    },
+    {
+      id: "sanctuary",
+      name: "暖心病房",
+      desc: "治疗量 +50%，范围 +55",
+      cost: 185,
+    },
+  ],
+  bulwark: [
+    {
+      id: "bastion",
+      name: "厚壳卫士",
+      desc: "最大耐久 +450，分伤半径 +45",
+      cost: 160,
+    },
+    {
+      id: "mending",
+      name: "长眠修复",
+      desc: "自愈由 8 点提升至 28 点",
+      cost: 155,
+    },
+  ],
+});
 export const DIFFICULTIES = {
   casual: { name: "休闲", hp: 0.8, lives: 25, desc: "更从容的森林之旅" },
   normal: { name: "标准", hp: 1, lives: 20, desc: "策略与挑战恰到好处" },
@@ -271,7 +354,7 @@ export const DIFFICULTIES = {
 export const WAVES = [
   {
     name: "林间异动",
-    tip: "先用箭塔守住前两段路口。",
+    tip: "先用兔耳箭屋守住路口。建筑也会受伤，可用诊所治疗或金币维修。",
     groups: [
       ["slime", 8],
       ["scout", 4],
@@ -279,7 +362,7 @@ export const WAVES = [
   },
   {
     name: "疾行突袭",
-    tip: "疾行者成群来袭，减速可以争取时间。",
+    tip: "爪行者成群来袭，减速可以争取时间。",
     groups: [
       ["scout", 12],
       ["slime", 6],
@@ -303,8 +386,8 @@ export const WAVES = [
     ],
   },
   {
-    name: "暗夜游魂",
-    tip: "游魂抵抗魔法，物理箭塔仍然重要。",
+    name: "暗夜幽魂",
+    tip: "幽魂抵抗魔法，物理箭塔仍然重要。",
     groups: [
       ["wisp", 12],
       ["slime", 10],
@@ -312,7 +395,7 @@ export const WAVES = [
   },
   {
     name: "苔林仪式",
-    tip: "萨满会治疗附近同伴，优先集火。",
+    tip: "祭司会治疗附近同伴，优先集火。",
     groups: [
       ["armored", 8],
       ["shaman", 3],

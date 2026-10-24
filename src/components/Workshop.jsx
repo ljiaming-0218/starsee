@@ -14,8 +14,10 @@ import {
   Shield,
   BookOpen,
   Check,
+  HeartPulse,
+  Wrench,
 } from "lucide-react";
-import { TYPES, SPECIALIZATIONS, ENEMIES } from "../content.js";
+import { TYPES, SPECIALIZATIONS, ENEMIES, isSupport } from "../content.js";
 import {
   towerStats,
   upgradeCost,
@@ -23,6 +25,8 @@ import {
   specialize,
   setPriority,
   sell,
+  repairCost,
+  repairTower,
 } from "../game.js";
 import { TowerArt, EnemyArt } from "./Art.jsx";
 const priorities = [
@@ -55,7 +59,7 @@ export default function Workshop({ state, onChoose, onCodex }) {
     tower && SPECIALIZATIONS[type].find((s) => s.id === tower.specialization);
   function upgradeTower(kind) {
     if (upgrade(game.current, tower.id, kind)) {
-      setNotice(`${def.name}的${kind === "damage" ? "伤害" : "射速"}已强化。`);
+      setNotice(`${def.name}的${kind === "damage" ? "效能" : "频率"}已强化。`);
       sound("click");
       refresh();
     }
@@ -64,7 +68,7 @@ export default function Workshop({ state, onChoose, onCodex }) {
     <aside className="workshop">
       <div className="workshop-title">
         <Swords size={21} />
-        <h2>塔楼工坊</h2>
+        <h2>建筑工坊</h2>
         <span>THE WORKSHOP</span>
       </div>
       <div className="tower-list">
@@ -96,7 +100,7 @@ export default function Workshop({ state, onChoose, onCodex }) {
                 </span>
               </div>
             </div>
-            <kbd>{i + 1}</kbd>
+            <kbd>{i === 9 ? 0 : i + 1}</kbd>
           </button>
         ))}
       </div>
@@ -104,7 +108,7 @@ export default function Workshop({ state, onChoose, onCodex }) {
         <div className="inspector-title">
           <TowerArt type={type} />
           <div>
-            <span>{tower ? "防御塔指令" : "部署档案"}</span>
+            <span>{tower ? "建筑指令" : "部署档案"}</span>
             <h3>{specialization?.name || def.name}</h3>
           </div>
           <span className="level-label">
@@ -112,6 +116,55 @@ export default function Workshop({ state, onChoose, onCodex }) {
           </span>
         </div>
         <p className="tower-description">{def.desc}</p>
+        <div
+          className={`durability ${tower && tower.hp < tower.maxHp * 0.35 ? "is-critical" : ""}`}
+        >
+          <span>
+            <HeartPulse size={14} /> 建筑耐久{" "}
+            <b>
+              {Math.ceil(tower?.hp ?? stats.maxHp)} /{" "}
+              {tower?.maxHp ?? stats.maxHp}
+            </b>
+          </span>
+          <div className="durability-track">
+            <i
+              style={{
+                width: `${tower ? (tower.hp / tower.maxHp) * 100 : 100}%`,
+              }}
+            />
+          </div>
+          {tower ? (
+            <button
+              className="repair-button"
+              disabled={
+                ended || tower.hp >= tower.maxHp || g.gold < repairCost(tower)
+              }
+              onClick={() => {
+                if (repairTower(game.current, tower.id)) {
+                  setNotice("紧急维修完成。受袭时可以让诊所持续抢修。");
+                  sound("heal");
+                  refresh();
+                }
+              }}
+            >
+              <Wrench size={13} />
+              {tower.hp >= tower.maxHp ? "建筑完好" : "紧急维修"}
+              <b>
+                <Coins size={12} />
+                {repairCost(tower)}
+              </b>
+            </button>
+          ) : (
+            <small>会受到怪物攻击 · 诊所可以修复</small>
+          )}
+        </div>
+        {["medic", "bulwark"].includes(type) && (
+          <div className="mechanic-note">
+            {type === "medic"
+              ? `每次修复 ${Math.round(stats.healing)} 点 · ${tower?.specialization === "triage" ? "同时 2 座" : "优先重伤"} · 不复活残骸`
+              : `承担邻居 65% 伤害 · 每 ${stats.interval.toFixed(2)} 秒自愈 ${stats.selfHeal} 点 · 优先保护邻居`}
+          </div>
+        )}
         {["venom", "flame", "ballista", "beacon"].includes(type) && (
           <div className="mechanic-note">
             {type === "venom"
@@ -121,23 +174,35 @@ export default function Workshop({ state, onChoose, onCodex }) {
                 : type === "ballista"
                   ? `贯穿 ${tower?.specialization === "rail" ? 4 : 2} 个目标 · 忽略 50% 护甲`
                   : tower
-                    ? `当前覆盖 ${g.towers.filter((t) => t.id !== tower.id && t.type !== "beacon" && Math.hypot(t.x - tower.x, t.y - tower.y) <= stats.range).length} 座攻击塔 · 光环取最高值`
-                    : "放在攻击塔附近 · 同类光环取最高值"}
+                    ? `当前覆盖 ${g.towers.filter((t) => t.id !== tower.id && !isSupport(t.type) && Math.hypot(t.x - tower.x, t.y - tower.y) <= stats.range).length} 座攻击塔 · 附近建筑减伤 25%`
+                    : "范围内建筑减伤 25% · 增幅同类取最高值"}
           </div>
         )}
         <div className="stat-trio">
           <span>
             <Swords size={13} />
-            {type === "beacon" ? "增伤" : "伤害"}
+            {type === "beacon"
+              ? "增伤"
+              : type === "medic"
+                ? "治疗"
+                : type === "bulwark"
+                  ? "耐久"
+                  : "伤害"}
             <b>
               {type === "beacon"
                 ? `+${Math.round(stats.auraDamage * 100)}%`
-                : Math.round(stats.damage)}
+                : Math.round(
+                    type === "medic"
+                      ? stats.healing
+                      : type === "bulwark"
+                        ? stats.maxHp
+                        : stats.damage,
+                  )}
             </b>
           </span>
           <span>
             <Target size={13} />
-            {type === "beacon" ? "光环" : "射程"}
+            {isSupport(type) ? "支援" : "射程"}
             <b>{(stats.range / 50).toFixed(1)} 格</b>
           </span>
           <span>
@@ -156,12 +221,24 @@ export default function Workshop({ state, onChoose, onCodex }) {
               {[
                 [
                   "damage",
-                  tower?.type === "beacon" ? "伤害光环" : "伤害强化",
+                  type === "beacon"
+                    ? "伤害光环"
+                    : type === "medic"
+                      ? "治疗强化"
+                      : type === "bulwark"
+                        ? "壳甲强化"
+                        : "伤害强化",
                   Flame,
                 ],
                 [
                   "speed",
-                  tower?.type === "beacon" ? "射速光环" : "射速强化",
+                  type === "beacon"
+                    ? "射速光环"
+                    : type === "medic"
+                      ? "抢修频率"
+                      : type === "bulwark"
+                        ? "自愈频率"
+                        : "射速强化",
                   TrendingUp,
                 ],
               ].map(([kind, label, Icon]) => (
@@ -184,8 +261,14 @@ export default function Workshop({ state, onChoose, onCodex }) {
                           ? "+8% 增幅"
                           : "+6% 射速"
                         : kind === "damage"
-                          ? "+42% 伤害"
-                          : "+25% 射速"}
+                          ? type === "bulwark"
+                            ? "+180 耐久"
+                            : type === "medic"
+                              ? "+42% 治疗"
+                              : "+42% 伤害"
+                          : isSupport(type)
+                            ? "+25% 频率"
+                            : "+25% 射速"}
                     </small>
                   </span>
                   <b>
@@ -203,15 +286,19 @@ export default function Workshop({ state, onChoose, onCodex }) {
             </div>
             <div className="priority">
               <label>
-                {type === "beacon"
-                  ? "光环自动生效 · 同类取最高值"
+                {isSupport(type)
+                  ? type === "medic"
+                    ? "自动抢修 · 优先损伤比例最高"
+                    : type === "bulwark"
+                      ? "自动分伤 · 最近的护卫承担"
+                      : "光环自动生效 · 同类取最高值"
                   : "攻击优先级"}
               </label>
               <div role="group" aria-label="攻击优先级">
                 {priorities.map(([id, label]) => (
                   <button
                     key={id}
-                    disabled={type === "beacon"}
+                    disabled={isSupport(type)}
                     className={tower.priority === id ? "active" : ""}
                     aria-pressed={tower.priority === id}
                     onClick={() => {
@@ -264,7 +351,7 @@ export default function Workshop({ state, onChoose, onCodex }) {
             ) : (
               <div className="specialization-locked">
                 <Lock size={12} />
-                <span>伤害与射速累计升级 4 次解锁专精</span>
+                <span>两条强化累计升级 4 次解锁专精</span>
                 <b>{level}/4</b>
               </div>
             )}
@@ -273,7 +360,20 @@ export default function Workshop({ state, onChoose, onCodex }) {
                 击杀 <b>{tower.kills}</b>
               </span>
               <span>
-                总伤害 <b>{Math.round(tower.damageDealt).toLocaleString()}</b>
+                {type === "medic"
+                  ? "修复量"
+                  : type === "bulwark"
+                    ? "分担量"
+                    : "总伤害"}{" "}
+                <b>
+                  {Math.round(
+                    type === "medic"
+                      ? tower.healingDone
+                      : type === "bulwark"
+                        ? tower.damageAbsorbed
+                        : tower.damageDealt,
+                  ).toLocaleString()}
+                </b>
               </span>
               <button
                 disabled={ended}
@@ -296,7 +396,7 @@ export default function Workshop({ state, onChoose, onCodex }) {
             <MousePointer2 size={17} />
             <p>
               点击空地上的标记建造
-              <small>选中防御塔后，可升级、专精和更改目标</small>
+              <small>选中建筑后，可维修、升级或选择专精</small>
             </p>
             <ChevronRight size={14} />
           </div>
@@ -305,9 +405,9 @@ export default function Workshop({ state, onChoose, onCodex }) {
       <button className="intel-card" onClick={onCodex}>
         <EnemyArt type="armored" />
         <div>
-          <span>敌人情报</span>
-          <strong>装甲不等于无敌</strong>
-          <p>物理减伤 58% · 魔法可穿透</p>
+          <span>攻城情报</span>
+          <strong>小心骨甲兽重击</strong>
+          <p>重击 24 · 龟壳堡优先承伤</p>
         </div>
         <BookOpen size={16} />
       </button>

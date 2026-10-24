@@ -1,15 +1,16 @@
 import { LEVELS, LEVEL_IDS, levelWaveCount } from "./levels.js";
-import { initialGame, starRating } from "./game.js";
+import { initialGame, starRating, towerStats } from "./game.js";
 import { TYPES, ENEMIES, DIFFICULTIES, TOTAL_WAVES } from "./content.js";
-export const SAVE_KEY = "evergreen.campaign.v3";
+export const SAVE_KEY = "evergreen.campaign.v4";
 export const RECORD_KEY = "evergreen.records.v3";
 export function restoreGame(storage) {
   try {
-    const raw = storage.getItem(SAVE_KEY);
+    const raw =
+      storage.getItem(SAVE_KEY) || storage.getItem("evergreen.campaign.v3");
     if (!raw || raw.length > 200000) return null;
     const g = JSON.parse(raw);
     if (
-      g.version !== 3 ||
+      ![3, 4].includes(g.version) ||
       !LEVELS[g.level] ||
       !DIFFICULTIES[g.difficulty] ||
       !["ready", "battle", "won", "lost"].includes(g.phase)
@@ -71,9 +72,33 @@ export function restoreGame(storage) {
       )
     )
       return null;
+    for (const t of g.towers) {
+      const max = towerStats(t).maxHp;
+      if (
+        g.version === 4 &&
+        (!Number.isFinite(t.hp) ||
+          !Number.isFinite(t.maxHp) ||
+          t.hp <= 0 ||
+          t.hp > t.maxHp ||
+          Math.abs(t.maxHp - max) > 0.01)
+      )
+        return null;
+      t.hp = g.version === 3 ? max : t.hp;
+      t.maxHp = max;
+      t.hit = 0;
+      t.healingDone = Math.max(0, Number(t.healingDone) || 0);
+      t.damageAbsorbed = Math.max(0, Number(t.damageAbsorbed) || 0);
+    }
+    for (const e of g.enemies) {
+      e.attackCooldown = Math.max(0, Number(e.attackCooldown) || 0);
+      e.raidTime = Math.max(0, Number(e.raidTime) || 0);
+      e.marchTimer = Math.max(0, Number(e.marchTimer) || 0);
+      e.raidTarget = null;
+    }
     return {
       ...initialGame(g.difficulty, g.level),
       ...g,
+      version: 4,
       shots: [],
       effects: [],
       particles: [],

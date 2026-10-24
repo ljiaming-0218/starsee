@@ -27,6 +27,9 @@ import {
   pathLength,
   positionAt,
   starRating,
+  damageBuilding,
+  repairCost,
+  repairTower,
 } from "./game.js";
 import {
   TOTAL_WAVES,
@@ -313,12 +316,12 @@ const CAMPAIGN_PLANS = {
     ["arrow", 425, 225],
     ["cannon", 625, 225],
     ["arrow", 325, 375],
-    ["beacon", 475, 175],
-    ["frost", 525, 375],
+    ["medic", 475, 175],
+    ["medic", 525, 375],
     ["venom", 375, 425],
     ["ballista", 675, 175],
     ["flame", 575, 425],
-    ["storm", 375, 175],
+    ["beacon", 375, 175],
   ],
   glacier: [
     ["arrow", 425, 325],
@@ -326,7 +329,7 @@ const CAMPAIGN_PLANS = {
     ["arrow", 225, 275],
     ["venom", 775, 275],
     ["ballista", 525, 525],
-    ["beacon", 475, 275],
+    ["medic", 475, 275],
     ["frost", 575, 225],
     ["flame", 225, 375],
     ["storm", 775, 375],
@@ -340,7 +343,7 @@ const CAMPAIGN_PLANS = {
     ["frost", 425, 375],
     ["beacon", 625, 225],
     ["flame", 725, 375],
-    ["storm", 325, 125],
+    ["medic", 575, 275],
     ["storm", 675, 525],
   ],
 };
@@ -358,6 +361,7 @@ test("all three normal campaigns are winnable using earned gold and timed spells
         );
         next++;
       }
+      for (const t of g.towers) if (t.hp < t.maxHp * 0.8) repairTower(g, t.id);
       if (g.towers.length >= 5)
         for (const t of g.towers) {
           for (const kind of ["damage", "speed"])
@@ -374,6 +378,8 @@ test("all three normal campaigns are winnable using earned gold and timed spells
             g.enemies[Math.floor(g.enemies.length / 2)];
           castSpell(g, "meteor", { x: e.x, y: e.y });
         }
+        for (const t of g.towers)
+          if (t.hp < t.maxHp * 0.3) repairTower(g, t.id);
         tick(g, 0.05);
       }
       assert.notEqual(g.phase, "lost", `${level} lost at wave ${w}`);
@@ -449,8 +455,8 @@ test("burning enemies killed at the exit reward the player instead of leaking a 
   assert.equal(g.kills, 1);
   assert.equal(g.lives, g.maxLives);
 });
-test("all eight towers have two specializations and distinct combat roles", () => {
-  assert.equal(Object.keys(TYPES).length, 8);
+test("all ten buildings have two specializations and distinct combat roles", () => {
+  assert.equal(Object.keys(TYPES).length, 10);
   for (const type of Object.keys(TYPES)) {
     assert.equal(SPECIALIZATIONS[type].length, 2);
     assert(TYPES[type].cost > 0);
@@ -628,5 +634,211 @@ test("new specialization branches extend fire range, strengthen burn, hunt bosse
     b.y = 175;
     b.specialization = "warbanner";
     assert(Math.abs(towerStats(t, g).damage - 29.7) < 0.001);
+  }
+});
+
+test("monsters damage buildings, pause briefly to raid, then resume marching", () => {
+  const { g, t } = scenario();
+  t.cooldown = 100;
+  const e = stationary(g);
+  e.speed = 48;
+  const before = e.distance;
+  tick(g, 0.1);
+  assert(t.hp < t.maxHp);
+  assert.equal(e.distance, before);
+  assert.equal(e.raidTarget, t.id);
+  assert(g.effects.some((fx) => fx.type === "raid"));
+  advance(g, 2.6);
+  assert(e.marchTimer > 0);
+  assert(e.distance > before);
+});
+test("ranged ghosts reach the rear line and boss blows damage neighboring buildings", () => {
+  for (const type of ["slime", "wisp"]) {
+    const { g, t } = scenario();
+    t.cooldown = 100;
+    stationary(g, type, 580);
+    tick(g, 0.1);
+    assert.equal(t.hp < t.maxHp, type === "wisp");
+  }
+  const { g, t } = scenario();
+  t.cooldown = 100;
+  const other = placeTower(g, "cannon", 475, 175);
+  other.cooldown = 100;
+  stationary(g, "boss");
+  tick(g, 0.1);
+  assert(t.hp < t.maxHp && other.hp < other.maxHp);
+});
+test("destroyed buildings stop shooting, receive no refund, and their site can be rebuilt", () => {
+  const { g, t } = scenario();
+  stationary(g);
+  damageBuilding(g, t, 100000);
+  const bank = g.gold;
+  tick(g, 0.1);
+  assert(!g.towers.some((b) => b.id === t.id));
+  assert.equal(g.gold, bank);
+  assert.equal(g.buildingsLost, 1);
+  assert.equal(t.shots, 0);
+  assert(g.effects.some((e) => e.type === "collapse"));
+  assert(!repairTower(g, t.id));
+  assert(placeTower(g, "arrow", t.x, t.y));
+});
+test("shell guards conserve incoming damage, do not recurse, and only one guard shares a hit", () => {
+  const { g, t } = scenario();
+  const a = placeTower(g, "bulwark", 475, 175),
+    b = placeTower(g, "bulwark", 375, 175);
+  damageBuilding(g, t, 100);
+  assert.equal(t.maxHp - t.hp, 35);
+  assert.equal(a.maxHp - a.hp + b.maxHp - b.hp, 65);
+  damageBuilding(g, a, 100);
+  assert.equal(a.maxHp - a.hp, 165);
+  assert.equal(b.maxHp - b.hp, 0);
+  a.hp = 2;
+  damageBuilding(g, t, 100);
+  assert.equal(a.hp, 0);
+  assert.equal(t.maxHp - t.hp, 133);
+});
+test("warm lanterns mitigate damage once and combine with shell sharing without multiplying protection", () => {
+  const { g, t } = scenario();
+  const a = placeTower(g, "beacon", 475, 175),
+    b = placeTower(g, "beacon", 375, 175);
+  damageBuilding(g, t, 100);
+  assert.equal(t.hp, t.maxHp - 75);
+  sell(g, b.id);
+  const guard = placeTower(g, "bulwark", 375, 175);
+  const before = t.hp,
+    hp = guard.hp;
+  damageBuilding(g, t, 100);
+  assert(Math.abs(before - t.hp - 26.25) < 0.001);
+  assert(Math.abs(hp - guard.hp - 48.75) < 0.001);
+  assert(a.hp > 0);
+});
+test("bunny clinics prioritize damage ratio, stay in range, and never attack or overheal", () => {
+  const { g, t } = scenario();
+  const clinic = placeTower(g, "medic", 475, 175),
+    other = placeTower(g, "cannon", 625, 225);
+  t.hp = 150;
+  other.hp = 100;
+  tick(g, 0.01);
+  assert.equal(other.hp, 124);
+  assert.equal(t.hp, 150);
+  assert.equal(clinic.healingDone, 24);
+  assert.equal(clinic.shots, 0);
+  assert.equal(g.shots.length, 0);
+  g.phase = "battle";
+  clinic.cooldown = 0;
+  t.hp = t.maxHp - 5;
+  other.hp = other.maxHp;
+  tick(g, 0.01);
+  assert.equal(t.hp, t.maxHp);
+  assert.equal(clinic.healingDone, 29);
+  assert(!setPriority(g, clinic.id, "strong"));
+});
+test("medical specializations heal two patients or extend reach and potency", () => {
+  for (const spec of ["triage", "sanctuary"]) {
+    const { g, t } = scenario();
+    const clinic = placeTower(g, "medic", 475, 175),
+      other = placeTower(g, "cannon", 625, 225);
+    clinic.specialization = spec;
+    t.hp = 100;
+    other.hp = 100;
+    tick(g, 0.01);
+    if (spec === "triage") assert.equal(t.hp + other.hp, 248);
+    else {
+      assert.equal(t.hp + other.hp, 236);
+      assert.equal(towerStats(clinic).range, 235);
+    }
+    assert.equal(clinic.shots, 0);
+  }
+});
+test("guard upgrades increase real durability and self-healing specializations recover damage", () => {
+  const { g, t } = scenario("bulwark");
+  t.hp -= 100;
+  const before = t.hp;
+  assert(upgrade(g, t.id, "damage"));
+  assert.equal(t.hp, before + 180);
+  assert.equal(t.maxHp, TYPES.bulwark.hp + 180);
+  for (let n = 0; n < 3; n++) upgrade(g, t.id, "speed");
+  assert(specialize(g, t.id, "bastion"));
+  assert.equal(t.maxHp, TYPES.bulwark.hp + 180 + 450);
+  assert.equal(towerStats(t).range, TYPES.bulwark.range + 45);
+  t.specialization = "mending";
+  t.maxHp = towerStats(t).maxHp;
+  t.hp = 100;
+  t.cooldown = 0;
+  tick(g, 0.01);
+  assert.equal(t.hp, 128);
+  assert.equal(t.shots, 0);
+});
+test("emergency repair charges only missing durability and terminal phases reject it", () => {
+  const { g, t } = scenario();
+  assert(!repairTower(g, t.id));
+  t.hp -= 50;
+  assert.equal(repairCost(t), 6);
+  const bank = g.gold;
+  assert(repairTower(g, t.id));
+  assert.equal(g.gold, bank - 6);
+  assert.equal(t.hp, t.maxHp);
+  t.hp -= 20;
+  g.gold = 0;
+  assert(!repairTower(g, t.id));
+  g.gold = 100;
+  g.phase = "lost";
+  assert(!repairTower(g, t.id));
+});
+test("v4 saves preserve damage, clinics and raid clocks while v3 campaigns migrate safely", () => {
+  const { g, t } = scenario("medic");
+  t.hp = 67;
+  t.healingDone = 39;
+  const e = stationary(g, "wisp");
+  e.attackCooldown = 2;
+  e.marchTimer = 4;
+  const data = new Map(),
+    store = { getItem: (k) => data.get(k), setItem: (k, v) => data.set(k, v) };
+  persistGame(store, g);
+  const restored = restoreGame(store);
+  assert.equal(restored.towers[0].hp, 67);
+  assert.equal(restored.towers[0].healingDone, 39);
+  assert.equal(restored.enemies[0].marchTimer, 4);
+  assert.equal(restored.enemies[0].attackCooldown, 2);
+  const legacy = JSON.parse(JSON.stringify(g));
+  legacy.version = 3;
+  for (const t of legacy.towers) {
+    delete t.hp;
+    delete t.maxHp;
+  }
+  data.delete(SAVE_KEY);
+  store.setItem("evergreen.campaign.v3", JSON.stringify(legacy));
+  const migrated = restoreGame(store);
+  assert.equal(migrated.version, 4);
+  assert.equal(migrated.towers[0].hp, TYPES.medic.hp);
+  assert.equal(migrated.gold, g.gold);
+});
+
+test("clinics do not revive ruins or heal out-of-range buildings and stop between waves", () => {
+  const { g, t } = scenario();
+  const clinic = placeTower(g, "medic", 475, 175),
+    far = placeTower(g, "frost", 325, 375);
+  t.hp = 0;
+  far.hp = 100;
+  tick(g, 0.01);
+  assert(!g.towers.includes(t));
+  assert.equal(far.hp, 100);
+  assert.equal(clinic.healingDone, 0);
+  clinic.hp = 100;
+  g.phase = "ready";
+  advance(g, 3);
+  assert.equal(clinic.hp, 100);
+  g.phase = "battle";
+  tick(g, 0.01);
+  assert.equal(clinic.hp, 124);
+});
+test("invalid durability in current saves is rejected instead of creating immortal buildings", () => {
+  const { g, t } = scenario();
+  const data = new Map(),
+    store = { getItem: (k) => data.get(k), setItem: (k, v) => data.set(k, v) };
+  for (const hp of [-1, null, 999999]) {
+    t.hp = hp;
+    persistGame(store, g);
+    assert.equal(restoreGame(store), null);
   }
 });

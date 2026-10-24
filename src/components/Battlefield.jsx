@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { DIFFICULTIES, levelWave } from "../content.js";
 import { starRating } from "../game.js";
-const ENEMY_BOSS_NAME = "远古岩石巨像";
+const ENEMY_BOSS_NAME = "裂颚灾像";
 export default function Battlefield({ state, onPoint, onPlace, onNext }) {
   const {
     g,
@@ -127,9 +127,15 @@ export default function Battlefield({ state, onPoint, onPlace, onNext }) {
         <div className="first-guide">
           <span>
             <Shield size={17} />
-            守卫者，先构筑你的防线
+            守护暖灯，从一间小屋开始
           </span>
-          <p>选一座塔，点击发光的空地标记。准备好后开始波次。</p>
+          <p>攻击屋守路口，诊所抢修，龟壳堡保护邻居。</p>
+        </div>
+      )}
+      {g.raidAlertTime > 0 && !paused && !ended && (
+        <div className="raid-alert" role="status">
+          <Shield size={14} />
+          {g.raidAlert}
         </div>
       )}
       {spell === "meteor" && !paused && (

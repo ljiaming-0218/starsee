@@ -139,6 +139,11 @@ export default function Dialogs({ state, onChooseLevel }) {
                   <div>
                     <h3>{def.name}</h3>
                     <p>{def.desc}</p>
+                    <p className="enemy-raid">
+                      攻城 {def.attack} · 间隔 {def.attackInterval}s · 范围{" "}
+                      {(def.reach / 50).toFixed(1)} 格<br />
+                      {def.raid}
+                    </p>
                     <span>
                       {def.armor > 0
                         ? `物理减伤 ${Math.round(def.armor * 100)}%`
@@ -207,7 +212,7 @@ export default function Dialogs({ state, onChooseLevel }) {
         ) : (
           <>
             <p className="dialog-description">
-              3 张地图、8 类防御塔、16 种专精。林道 8 波、峡谷 10 波、要塞 12
+              3 张地图、10 类建筑、20 种专精。林道 8 波、峡谷 10 波、要塞 12
               波。每关独立布阵、计分和评级。
             </p>
             <ol className="help-steps">
@@ -217,10 +222,16 @@ export default function Dialogs({ state, onChooseLevel }) {
               </li>
               <li>
                 <b>选择合适的克制</b>
-                箭塔单体、炮塔溅射、冰塔减速、雷塔连锁。新增毒沼抑疗、喷火清群、重弩贯穿、灯塔增幅。重甲怕魔法，游魂怕物理。
+                箭塔单体、炮塔溅射、冰塔减速、雷塔连锁。毒沼抑疗、喷火清群、重弩贯穿、暖灯增幅与减伤。重甲怕魔法，幽魂怕物理。
               </li>
               <li>
-                <b>升级，更要专精</b>伤害与射速各可升级 3 次，累计升级 4
+                <b>守住会受伤的建筑</b>
+                怪物会短暂停步攻城，随后继续前进。兔兔诊所优先抢修重伤建筑；龟壳堡承担邻居
+                65% 伤害，暖灯使附近建筑受到伤害降低
+                25%。可花金币紧急维修，损毁后需重新建造。
+              </li>
+              <li>
+                <b>升级，更要专精</b>两条效能与频率各可升级 3 次，累计升级 4
                 次解锁二选一专精。目标优先级可随时调整。出售返还总投入 70%。
               </li>
               <li>
@@ -229,7 +240,8 @@ export default function Dialogs({ state, onChooseLevel }) {
               </li>
             </ol>
             <p className="help-keyboard">
-              1–8 选塔 · Q / W 秘术 · Space 开波或暂停 · Esc 取消
+              1–8 攻击与暖灯 · 9 诊所 / 0 龟壳堡 · Q / W 秘术 · Space 开波或暂停
+              · Esc 取消
               <br />
               战场支持方向键移动格位，Enter
               建造或释放技能。关闭页面前会自动存档。通过顶部或底部章节卡切换关卡；通关后可继续下一关。
